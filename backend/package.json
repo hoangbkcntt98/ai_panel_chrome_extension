@@ -1,0 +1,13 @@
+{
+  "name": "ai-study-sidekick-backend",
+  "private": true,
+  "version": "1.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env server.mjs",
+    "start:plain": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}

@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Study Sidekick</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">✦</div>
+          <div>
+            <h1>AI Sidekick</h1>
+            <p id="pageLabel">Sẵn sàng hỗ trợ</p>
+          </div>
+        </div>
+        <button id="settingsButton" class="icon-button" title="Cài đặt" aria-label="Cài đặt">⚙</button>
+      </header>
+
+      <section id="selectionCard" class="selection-card hidden" aria-live="polite">
+        <div class="selection-title-row">
+          <span>Đoạn đang chọn</span>
+          <button id="clearSelectionButton" class="text-button">Bỏ chọn</button>
+        </div>
+        <blockquote id="selectionText"></blockquote>
+      </section>
+
+      <section class="quick-actions" aria-label="Tác vụ nhanh">
+        <button data-action="explain">Giải thích</button>
+        <button data-action="translate">Dịch → VI</button>
+        <button data-action="summarize">Tóm tắt trang</button>
+      </section>
+
+      <section id="chat" class="chat" aria-live="polite"></section>
+
+      <section class="composer-wrap">
+        <div class="context-row">
+          <label class="toggle-label">
+            <input id="includeContext" type="checkbox" checked />
+            <span>Dùng nội dung trang</span>
+          </label>
+          <button id="clearChatButton" class="text-button">Xóa chat</button>
+        </div>
+        <div class="composer">
+          <textarea id="messageInput" rows="1" placeholder="Hỏi về trang này…"></textarea>
+          <button id="sendButton" class="send-button" aria-label="Gửi">➤</button>
+        </div>
+        <p id="statusText" class="status-text">Backend: chưa kiểm tra</p>
+      </section>
+    </main>
+
+    <dialog id="settingsDialog">
+      <form method="dialog" class="settings-card">
+        <div class="settings-header">
+          <div>
+            <h2>Cài đặt</h2>
+            <p>Extension chỉ gửi dữ liệu đến backend bạn cấu hình.</p>
+          </div>
+          <button class="icon-button" value="cancel" aria-label="Đóng">✕</button>
+        </div>
+
+        <label class="field-label" for="backendUrl">Backend URL</label>
+        <input id="backendUrl" class="field-input" type="url" placeholder="http://localhost:8787" />
+        <p class="field-help">Mặc định: <code>http://localhost:8787</code></p>
+
+        <label class="field-label" for="modelId">Model ID</label>
+        <div class="model-row">
+          <input id="modelId" class="field-input" type="text" list="modelOptions" placeholder="vd: if/glm-4.7" autocomplete="off" />
+          <datalist id="modelOptions"></datalist>
+          <button id="refreshModelsButton" type="button" class="secondary-button compact-button">↻</button>
+        </div>
+        <p class="field-help">Với 9Router, bấm ↻ để lấy model từ <code>/v1/models</code>, hoặc nhập Model ID thủ công.</p>
+        <p id="providerInfo" class="provider-info"></p>
+
+        <div class="settings-actions">
+          <button id="testBackendButton" type="button" class="secondary-button">Kiểm tra kết nối</button>
+          <button id="saveSettingsButton" type="button" class="primary-button">Lưu</button>
+        </div>
+        <p id="settingsStatus" class="status-text"></p>
+      </form>
+    </dialog>
+
+    <template id="messageTemplate">
+      <article class="message">
+        <div class="message-role"></div>
+        <div class="message-body"></div>
+      </article>
+    </template>
+
+    <script src="sidepanel.js"></script>
+  </body>
+</html>
