@@ -57,9 +57,11 @@ async function ensureSchema() {
         section_key TEXT NOT NULL UNIQUE,
         title TEXT NOT NULL,
         persist_history BOOLEAN NOT NULL DEFAULT FALSE,
+        context JSONB,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE chat_sections ADD COLUMN IF NOT EXISTS context JSONB;
       CREATE TABLE IF NOT EXISTS chat_messages (
         id SERIAL PRIMARY KEY,
         section_key TEXT NOT NULL,
@@ -124,6 +126,17 @@ async function updateSection(sectionKey, title, persistHistory) {
   return result.rows[0];
 }
 
+async function updateSectionContext(sectionKey, context) {
+  const result = await pgPool.query(
+    `UPDATE chat_sections
+     SET context = $2::jsonb, updated_at = NOW()
+     WHERE section_key = $1
+     RETURNING *`,
+    [sectionKey, JSON.stringify(context || null)]
+  );
+  return result.rows[0];
+}
+
 async function saveMessagesToDb(sectionKey, messages) {
   if (!sectionKey || !messages.length) return;
   // Delete old messages and insert new ones (full replace)
@@ -180,7 +193,7 @@ function sendJson(res, status, payload) {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Cache-Control": "no-store"
   });
   res.end(body);
@@ -392,7 +405,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Headers": "Content-Type",
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS"
+      "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
     });
     return res.end();
   }
@@ -525,6 +538,27 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true });
     } catch (error) {
       log("DELETE /api/sections error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  if (req.method === "PUT" && url.pathname.startsWith("/api/sections/") && url.pathname.endsWith("/context")) {
+    try {
+      const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", "").replace("/context", ""));
+      const body = await readJson(req);
+      const rawContext = body.context && typeof body.context === "object" ? body.context : null;
+      const context = rawContext ? {
+        title: clean(rawContext.title, 500),
+        url: clean(rawContext.url, 1500),
+        selection: clean(rawContext.selection, 8000),
+        pageText: clean(rawContext.pageText, 16000)
+      } : null;
+      if (!sectionKey) return sendJson(res, 400, { error: "Missing sectionKey" });
+      const section = await updateSectionContext(sectionKey, context);
+      if (!section) return sendJson(res, 404, { error: "Section not found" });
+      return sendJson(res, 200, { section });
+    } catch (error) {
+      log("PUT section context error: " + error.message);
       return sendJson(res, 500, { error: error.message });
     }
   }

@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   lastSelection: "lastSelection",
   pendingSelection: "pendingSelection",
   activeSection: "activeSection",
+  sectionContexts: "sectionContexts",
   pendingSaveWord: "pendingSaveWord",
   pendingAction: "pendingAction"
 };
@@ -96,6 +97,8 @@ const state = {
   },
   backendInfo: null,
   activeSection: null,   // { sectionKey, title, persistHistory }
+  sectionContext: null,
+  sectionContexts: {},
   sections: []
 };
 
@@ -226,6 +229,36 @@ function normalizeBackendUrl(url) {
 
 function getApiBase() {
   return state.settings.backendUrl;
+}
+
+function normalizeSectionContext(context) {
+  if (!context || typeof context !== "object") return null;
+  return {
+    title: String(context.title || "").slice(0, 500),
+    url: String(context.url || "").slice(0, 1500),
+    selection: String(context.selection || "").slice(0, 8000),
+    pageText: String(context.pageText || "").slice(0, 16000)
+  };
+}
+
+async function persistSectionContext() {
+  const section = state.activeSection;
+  const context = normalizeSectionContext(state.context);
+  if (!section || !context) return;
+
+  state.sectionContexts[section.sectionKey] = context;
+  state.sectionContext = context;
+  await chrome.storage.local.set({ [STORAGE_KEYS.sectionContexts]: state.sectionContexts });
+
+  try {
+    await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(section.sectionKey)}/context`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context })
+    });
+  } catch (error) {
+    console.warn("Cannot persist section context:", error.message);
+  }
 }
 
 // ===== Text-to-Speech =====
@@ -466,9 +499,11 @@ function renderSectionSelect() {
 async function selectSection(sectionKey) {
   // Save current section's messages before switching
   await persistCurrentSection();
+  await persistSectionContext();
 
   if (!sectionKey) {
     state.activeSection = null;
+    state.sectionContext = null;
     state.messages = [];
     el.resetHistoryButton.classList.add("hidden");
     el.deleteSectionButton.classList.add("hidden");
@@ -488,11 +523,20 @@ async function selectSection(sectionKey) {
   state.activeSection = {
     sectionKey: sec.section_key,
     title: sec.title,
-    persistHistory: sec.persist_history
+    persistHistory: sec.persist_history,
+    context: normalizeSectionContext(sec.context)
   };
+  const rememberedContext = state.activeSection.context
+    || state.sectionContexts[sectionKey]
+    || normalizeSectionContext(state.context);
+  state.sectionContext = rememberedContext;
+  state.context = rememberedContext;
+  state.selection = rememberedContext?.selection || "";
+  renderSelection();
   el.deleteSectionButton.classList.remove("hidden");
   el.deleteSectionButton.disabled = false;
   await chrome.storage.local.set({ [STORAGE_KEYS.activeSection]: state.activeSection });
+  void persistSectionContext();
 
   // Load messages from DB if persist is on
   if (sec.persist_history) {
@@ -584,10 +628,13 @@ async function deleteCurrentSection() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     state.activeSection = null;
+    delete state.sectionContexts[sectionKey];
+    state.sectionContext = null;
     state.messages = [];
     await chrome.storage.local.set({
       [STORAGE_KEYS.messages]: [],
-      [STORAGE_KEYS.activeSection]: null
+      [STORAGE_KEYS.activeSection]: null,
+      [STORAGE_KEYS.sectionContexts]: state.sectionContexts
     });
     await fetchSections();
     renderMessages();
@@ -797,6 +844,9 @@ async function saveMessages() {
 async function loadState() {
   const stored = await chrome.storage.local.get(Object.values(STORAGE_KEYS));
   state.messages = Array.isArray(stored[STORAGE_KEYS.messages]) ? stored[STORAGE_KEYS.messages] : [];
+  state.sectionContexts = stored[STORAGE_KEYS.sectionContexts] && typeof stored[STORAGE_KEYS.sectionContexts] === "object"
+    ? stored[STORAGE_KEYS.sectionContexts]
+    : {};
   state.settings = {
     backendUrl: normalizeBackendUrl(stored[STORAGE_KEYS.settings]?.backendUrl || DEFAULT_BACKEND_URL),
     model: String(stored[STORAGE_KEYS.settings]?.model || "").trim(),
@@ -823,11 +873,10 @@ async function loadState() {
   el.outputLanguage.value = state.settings.outputLanguage;
   renderShortcutInputs(state.settings.shortcuts);
 
-  state.activeSection = stored[STORAGE_KEYS.activeSection] || null;
-
   renderMessages();
   renderSelection();
   await refreshPageContext();
+  state.activeSection = stored[STORAGE_KEYS.activeSection] || null;
 }
 
 async function refreshPageContext() {
@@ -836,10 +885,17 @@ async function refreshPageContext() {
     if (!tab?.id) throw new Error("No active tab found");
     const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTEXT" });
     if (!response?.ok) throw new Error("Page does not support reading content");
-    state.context = response.context;
-    if (response.context.selection) state.selection = response.context.selection;
-    el.pageLabel.textContent = response.context.title || "Current page";
+    state.context = normalizeSectionContext(response.context);
+    if (response.context?.selection) state.selection = response.context.selection;
+    el.pageLabel.textContent = response.context?.title || "Current page";
     renderSelection();
+    const samePageAsSection = !state.sectionContext?.url
+      || !state.context?.url
+      || state.sectionContext.url === state.context.url;
+    if (state.activeSection && samePageAsSection) {
+      // Keep a snapshot so switching sections restores its own page context.
+      void persistSectionContext();
+    }
   } catch {
     state.context = null;
     el.pageLabel.textContent = "This page does not allow reading content";
@@ -848,7 +904,13 @@ async function refreshPageContext() {
 
 function buildContextPayload(force = false) {
   if (!force && !el.includeContext.checked) return null;
-  const context = state.context || {};
+  const liveContext = state.context || {};
+  const rememberedContext = state.sectionContext;
+  const context = rememberedContext?.url
+    && liveContext.url
+    && rememberedContext.url !== liveContext.url
+    ? rememberedContext
+    : liveContext;
   return {
     title: context.title || "",
     url: context.url || "",
@@ -1129,7 +1191,9 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   const update = changes[STORAGE_KEYS.pendingSelection]?.newValue || changes[STORAGE_KEYS.lastSelection]?.newValue;
   if (update?.text) {
     state.selection = update.text;
+    if (state.context) state.context.selection = update.text;
     renderSelection();
+    void persistSectionContext();
     if (changes[STORAGE_KEYS.pendingSelection]?.newValue) {
       await chrome.storage.local.remove(STORAGE_KEYS.pendingSelection);
     }
@@ -1143,6 +1207,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
       state.context.url = saveWord.url || state.context.url || "";
     }
     renderSelection();
+    void persistSectionContext();
     saveWordToApi(saveWord.text, saveWord.url, saveWord.title);
     await chrome.storage.local.remove(STORAGE_KEYS.pendingSaveWord);
   }

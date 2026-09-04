@@ -130,6 +130,7 @@ Backend sẽ dùng OpenAI Responses API khi `AI_PROVIDER=openai`.
 - Bôi đen một đoạn text → panel sẽ nhận đoạn đang chọn.
 - Hoặc chuột phải → **Hỏi AI về đoạn đã chọn**.
 - Khi lưu từ, extension sẽ gọi AI để dịch sang tiếng Việt và hiển thị bản dịch trong danh sách **Saved words**.
+- Mỗi section lưu riêng context trang gần nhất (URL, tiêu đề, nội dung và đoạn được chọn) để khi mở lại có thể tiếp tục học đúng ngữ cảnh.
 - Dùng các nút nhanh hoặc gõ câu hỏi.
 - Checkbox **Dùng nội dung trang** quyết định có gửi context của trang lên backend hay không.
 
