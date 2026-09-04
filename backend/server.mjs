@@ -70,6 +70,15 @@ async function ensureSchema() {
           REFERENCES chat_sections(section_key) ON DELETE CASCADE
       );
       CREATE INDEX IF NOT EXISTS idx_chat_messages_section ON chat_messages(section_key, created_at);
+      CREATE TABLE IF NOT EXISTS saved_words (
+        id SERIAL PRIMARY KEY,
+        word TEXT NOT NULL,
+        context TEXT,
+        source_url TEXT,
+        source_title TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_saved_words_created ON saved_words(created_at DESC);
     `);
     log("Database schema ensured");
   } catch (err) {
@@ -137,6 +146,27 @@ async function loadMessagesFromDb(sectionKey) {
 async function clearMessagesFromDb(sectionKey) {
   await pgPool.query("DELETE FROM chat_messages WHERE section_key = $1", [sectionKey]);
   await pgPool.query("UPDATE chat_sections SET updated_at = NOW() WHERE section_key = $1", [sectionKey]);
+}
+
+async function saveWord(word, context, sourceUrl, sourceTitle) {
+  const result = await pgPool.query(
+    `INSERT INTO saved_words (word, context, source_url, source_title)
+     VALUES ($1, $2, $3, $4) RETURNING *`,
+    [word, context || null, sourceUrl || null, sourceTitle || null]
+  );
+  return result.rows[0];
+}
+
+async function listWords(limit = 200) {
+  const result = await pgPool.query(
+    "SELECT * FROM saved_words ORDER BY created_at DESC LIMIT $1",
+    [limit]
+  );
+  return result.rows;
+}
+
+async function deleteWord(id) {
+  await pgPool.query("DELETE FROM saved_words WHERE id = $1", [id]);
 }
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -535,6 +565,48 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true });
     } catch (error) {
       log("POST messages error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  // ===== Word management APIs =====
+  if (req.method === "GET" && url.pathname === "/api/words") {
+    try {
+      const words = await listWords();
+      return sendJson(res, 200, { words });
+    } catch (error) {
+      log("GET /api/words error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/words") {
+    try {
+      const body = await readJson(req);
+      const word = clean(body.word, 500);
+      if (!word) return sendJson(res, 400, { error: "Missing word" });
+      const context = clean(body.context, 2000);
+      const sourceUrl = clean(body.sourceUrl, 1500);
+      const sourceTitle = clean(body.sourceTitle, 500);
+      const saved = await saveWord(word, context, sourceUrl, sourceTitle);
+      log(`Saved word: ${word.slice(0, 50)}`);
+      return sendJson(res, 200, { word: saved });
+    } catch (error) {
+      log("POST /api/words error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  if (req.method === "DELETE" && url.pathname.startsWith("/api/words/")) {
+    try {
+      const idStr = url.pathname.replace("/api/words/", "");
+      const id = Number(idStr);
+      if (!id) return sendJson(res, 400, { error: "Invalid word id" });
+      await deleteWord(id);
+      log(`Deleted word id: ${id}`);
+      return sendJson(res, 200, { ok: true });
+    } catch (error) {
+      log("DELETE /api/words error: " + error.message);
       return sendJson(res, 500, { error: error.message });
     }
   }

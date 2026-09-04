@@ -4,7 +4,8 @@ const STORAGE_KEYS = {
   settings: "assistantSettings",
   lastSelection: "lastSelection",
   pendingSelection: "pendingSelection",
-  activeSection: "activeSection"
+  activeSection: "activeSection",
+  pendingSaveWord: "pendingSaveWord"
 };
 
 const state = {
@@ -58,7 +59,14 @@ const el = {
   newSectionPersist: document.querySelector("#newSectionPersist"),
   cancelNewSectionButton: document.querySelector("#cancelNewSectionButton"),
   createSectionButton: document.querySelector("#createSectionButton"),
-  newSectionStatus: document.querySelector("#newSectionStatus")
+  newSectionStatus: document.querySelector("#newSectionStatus"),
+  // Words management
+  saveWordButton: document.querySelector("#saveWordButton"),
+  wordsButton: document.querySelector("#wordsButton"),
+  wordsDialog: document.querySelector("#wordsDialog"),
+  closeWordsButton: document.querySelector("#closeWordsButton"),
+  wordsList: document.querySelector("#wordsList"),
+  wordsCount: document.querySelector("#wordsCount")
 };
 
 function normalizeBackendUrl(url) {
@@ -427,6 +435,120 @@ async function deleteCurrentSection() {
   }
 }
 
+// ===== Word management =====
+async function saveWord() {
+  const text = (state.selection || "").trim();
+  if (!text) {
+    setStatus("Select text first to save as word");
+    return;
+  }
+  const context = state.context || {};
+  try {
+    setStatus("Saving word…");
+    const res = await fetch(`${getApiBase()}/api/words`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word: text.slice(0, 500),
+        context: text,
+        sourceUrl: context.url || "",
+        sourceTitle: context.title || ""
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus(`Saved word: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}"`);
+  } catch (err) {
+    setStatus(`Save word error: ${err.message}`, true);
+  }
+}
+
+async function loadWords() {
+  try {
+    const res = await fetch(`${getApiBase()}/api/words`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return Array.isArray(data.words) ? data.words : [];
+  } catch (err) {
+    console.warn("Cannot load words:", err.message);
+    return [];
+  }
+}
+
+async function deleteWord(id) {
+  try {
+    await fetch(`${getApiBase()}/api/words/${id}`, { method: "DELETE" });
+  } catch (err) {
+    console.warn("Cannot delete word:", err.message);
+  }
+}
+
+async function openWordsDialog() {
+  el.wordsList.innerHTML = '<p class="words-empty">Loading…</p>';
+  el.wordsCount.textContent = "";
+  el.wordsDialog.showModal();
+
+  const words = await loadWords();
+  if (!words.length) {
+    el.wordsList.innerHTML = '<p class="words-empty">No saved words yet. Right-click selected text on any page → "Save word to AI"</p>';
+    return;
+  }
+
+  el.wordsCount.textContent = `${words.length} word${words.length > 1 ? "s" : ""} saved`;
+  el.wordsList.replaceChildren();
+
+  for (const w of words) {
+    const item = document.createElement("div");
+    item.className = "word-item";
+
+    const header = document.createElement("div");
+    header.className = "word-item-header";
+
+    const wordEl = document.createElement("div");
+    wordEl.className = "word-item-word";
+    wordEl.textContent = w.word;
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "word-item-delete";
+    delBtn.textContent = "🗑";
+    delBtn.title = "Delete";
+    delBtn.addEventListener("click", async () => {
+      await deleteWord(w.id);
+      item.remove();
+      const remaining = el.wordsList.querySelectorAll(".word-item").length;
+      el.wordsCount.textContent = `${remaining} word${remaining !== 1 ? "s" : ""} saved`;
+      if (!remaining) {
+        el.wordsList.innerHTML = '<p class="words-empty">No saved words yet.</p>';
+      }
+    });
+
+    header.append(wordEl, delBtn);
+    item.append(header);
+
+    if (w.source_url || w.source_title) {
+      const source = document.createElement("div");
+      source.className = "word-item-source";
+      if (w.source_url) {
+        const a = document.createElement("a");
+        a.href = w.source_url;
+        a.target = "_blank";
+        a.textContent = w.source_title || w.source_url;
+        source.append("Source: ", a);
+      } else {
+        source.textContent = `Source: ${w.source_title}`;
+      }
+      item.append(source);
+    }
+
+    const date = document.createElement("div");
+    date.className = "word-item-date";
+    date.textContent = new Date(w.created_at).toLocaleString();
+    item.append(date);
+
+    el.wordsList.append(item);
+  }
+}
+
 async function resetSectionHistory() {
   if (!state.activeSection) return;
   const sectionKey = state.activeSection.sectionKey;
@@ -671,6 +793,12 @@ el.readSelectionButton.addEventListener("click", () => {
   if (state.selection) ttsSpeak(state.selection, el.readSelectionButton);
 });
 
+el.saveWordButton.addEventListener("click", saveWord);
+
+el.wordsButton.addEventListener("click", openWordsDialog);
+
+el.closeWordsButton.addEventListener("click", () => el.wordsDialog.close());
+
 el.stopTtsButton.addEventListener("click", ttsStop);
 
 el.resetHistoryButton.addEventListener("click", resetSectionHistory);
@@ -749,12 +877,46 @@ chrome.storage.onChanged.addListener((changes, area) => {
     state.selection = update.text;
     renderSelection();
   }
+  const saveWord = changes[STORAGE_KEYS.pendingSaveWord]?.newValue;
+  if (saveWord?.text) {
+    state.selection = saveWord.text;
+    if (saveWord.title || saveWord.url) {
+      state.context = state.context || {};
+      state.context.title = saveWord.title || state.context.title || "";
+      state.context.url = saveWord.url || state.context.url || "";
+    }
+    renderSelection();
+    saveWordToApi(saveWord.text, saveWord.url, saveWord.title);
+    chrome.storage.local.remove(STORAGE_KEYS.pendingSaveWord);
+  }
 });
 
 chrome.tabs.onActivated.addListener(() => refreshPageContext());
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
   if (changeInfo.status === "complete") refreshPageContext();
 });
+
+// Save word directly (used by context menu storage listener)
+async function saveWordToApi(text, sourceUrl, sourceTitle) {
+  try {
+    setStatus(`Saving word: "${text.slice(0, 40)}…"`);
+    const res = await fetch(`${getApiBase()}/api/words`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word: text.slice(0, 500),
+        context: text,
+        sourceUrl: sourceUrl || "",
+        sourceTitle: sourceTitle || ""
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    setStatus(`Saved word: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}"`);
+  } catch (err) {
+    setStatus(`Save word error: ${err.message}`, true);
+  }
+}
 
 // ===== Init =====
 async function init() {

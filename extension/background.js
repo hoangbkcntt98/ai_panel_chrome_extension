@@ -1,4 +1,5 @@
-const MENU_ID = "ai-study-sidekick-selection";
+const MENU_ASK = "ai-study-sidekick-selection";
+const MENU_SAVE_WORD = "ai-study-sidekick-save-word";
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
@@ -7,7 +8,12 @@ chrome.sidePanel
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
-      id: MENU_ID,
+      id: MENU_SAVE_WORD,
+      title: "Save word to AI",
+      contexts: ["selection"]
+    });
+    chrome.contextMenus.create({
+      id: MENU_ASK,
       title: "Ask AI about selected text",
       contexts: ["selection"]
     });
@@ -15,10 +21,28 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId !== MENU_ID) return;
-
   const text = (info.selectionText || "").trim();
-  if (text) {
+  if (!text) return;
+
+  if (info.menuItemId === MENU_SAVE_WORD) {
+    await chrome.storage.local.set({
+      pendingSaveWord: {
+        text,
+        title: tab?.title || "",
+        url: tab?.url || "",
+        updatedAt: Date.now()
+      }
+    });
+    if (tab?.windowId) {
+      try {
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+      } catch (error) {
+        console.warn("Could not open side panel:", error);
+      }
+    }
+  }
+
+  if (info.menuItemId === MENU_ASK) {
     await chrome.storage.local.set({
       pendingSelection: {
         text,
@@ -27,13 +51,12 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
         updatedAt: Date.now()
       }
     });
-  }
-
-  if (tab?.windowId) {
-    try {
-      await chrome.sidePanel.open({ windowId: tab.windowId });
-    } catch (error) {
-      console.warn("Could not open side panel:", error);
+    if (tab?.windowId) {
+      try {
+        await chrome.sidePanel.open({ windowId: tab.windowId });
+      } catch (error) {
+        console.warn("Could not open side panel:", error);
+      }
     }
   }
 });

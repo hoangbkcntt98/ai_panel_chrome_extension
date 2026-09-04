@@ -16,7 +16,10 @@
             <p id="pageLabel">Ready to help</p>
           </div>
         </div>
-        <button id="settingsButton" class="icon-button" title="Settings" aria-label="Settings">⚙</button>
+        <div class="topbar-actions">
+          <button id="wordsButton" class="icon-button" title="Saved words" aria-label="Saved words">📚</button>
+          <button id="settingsButton" class="icon-button" title="Settings" aria-label="Settings">⚙</button>
+        </div>
       </header>
 
       <!-- Sticky header block: section bar + selection card + quick actions -->
@@ -32,6 +35,7 @@
           <div class="selection-title-row">
             <span>Selected text</span>
             <div class="selection-actions">
+              <button id="saveWordButton" class="text-button" title="Save word">📥 Save word</button>
               <button id="readSelectionButton" class="text-button" title="Read aloud">🔊</button>
               <button id="clearSelectionButton" class="text-button">Clear</button>
             </div>
@@ -153,6 +157,20 @@
         <button class="tts-button" title="Read aloud" aria-label="Read aloud">🔊</button>
       </article>
     </template>
+
+    <!-- Words list dialog -->
+    <dialog id="wordsDialog">
+      <div class="settings-card words-card">
+        <div class="settings-header">
+          <div>
+            <h2>Saved words</h2>
+            <p id="wordsCount"></p>
+          </div>
+          <button class="icon-button" id="closeWordsButton" value="cancel" aria-label="Close">✕</button>
+        </div>
+        <div id="wordsList" class="words-list"></div>
+      </div>
+    </dialog>
 
     <script src="sidepanel.js"></script>
   </body>
