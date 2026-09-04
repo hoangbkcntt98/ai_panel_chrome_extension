@@ -11,7 +11,12 @@ const state = {
   selection: "",
   context: null,
   loading: false,
-  settings: { backendUrl: DEFAULT_BACKEND_URL, model: "" },
+  settings: {
+    backendUrl: DEFAULT_BACKEND_URL,
+    model: "",
+    systemPrompt: "",
+    outputLanguage: ""
+  },
   backendInfo: null
 };
 
@@ -33,8 +38,10 @@ const el = {
   modelId: document.querySelector("#modelId"),
   modelOptions: document.querySelector("#modelOptions"),
   refreshModelsButton: document.querySelector("#refreshModelsButton"),
-  providerInfo: document.querySelector("#providerInfo"),
-  testBackendButton: document.querySelector("#testBackendButton"),
+ providerInfo: document.querySelector("#providerInfo"),
+ systemPrompt: document.querySelector("#systemPrompt"),
+ outputLanguage: document.querySelector("#outputLanguage"),
+ testBackendButton: document.querySelector("#testBackendButton"),
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
   settingsStatus: document.querySelector("#settingsStatus")
 };
@@ -141,10 +148,12 @@ async function saveMessages() {
 async function loadState() {
   const stored = await chrome.storage.local.get(Object.values(STORAGE_KEYS));
   state.messages = Array.isArray(stored[STORAGE_KEYS.messages]) ? stored[STORAGE_KEYS.messages] : [];
-  state.settings = {
-    backendUrl: normalizeBackendUrl(stored[STORAGE_KEYS.settings]?.backendUrl || DEFAULT_BACKEND_URL),
-    model: String(stored[STORAGE_KEYS.settings]?.model || "").trim()
-  };
+ state.settings = {
+   backendUrl: normalizeBackendUrl(stored[STORAGE_KEYS.settings]?.backendUrl || DEFAULT_BACKEND_URL),
+   model: String(stored[STORAGE_KEYS.settings]?.model || "").trim(),
+   systemPrompt: String(stored[STORAGE_KEYS.settings]?.systemPrompt || "").trim(),
+   outputLanguage: String(stored[STORAGE_KEYS.settings]?.outputLanguage || "").trim()
+ };
 
   const selectionCandidate = stored[STORAGE_KEYS.pendingSelection] || stored[STORAGE_KEYS.lastSelection];
   if (selectionCandidate?.text) state.selection = selectionCandidate.text;
@@ -152,9 +161,11 @@ async function loadState() {
     await chrome.storage.local.remove(STORAGE_KEYS.pendingSelection);
   }
 
-  el.backendUrl.value = state.settings.backendUrl;
-  el.modelId.value = state.settings.model;
-  renderMessages();
+ el.backendUrl.value = state.settings.backendUrl;
+ el.modelId.value = state.settings.model;
+ el.systemPrompt.value = state.settings.systemPrompt;
+ el.outputLanguage.value = state.settings.outputLanguage;
+ renderMessages();
   renderSelection();
   await refreshPageContext();
 }
@@ -204,11 +215,13 @@ async function askAssistant(text) {
     const response = await fetch(`${state.settings.backendUrl}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: state.messages.slice(-12),
-        context: buildContextPayload(),
-        model: state.settings.model || undefined
-      })
+     body: JSON.stringify({
+       messages: state.messages.slice(-12),
+       context: buildContextPayload(),
+       model: state.settings.model || undefined,
+       systemPrompt: state.settings.systemPrompt || undefined,
+       outputLanguage: state.settings.outputLanguage || undefined
+     })
     });
 
     const data = await response.json().catch(() => ({}));
@@ -345,9 +358,11 @@ el.clearChatButton.addEventListener("click", async () => {
 });
 
 el.settingsButton.addEventListener("click", () => {
-  el.backendUrl.value = state.settings.backendUrl;
-  el.modelId.value = state.settings.model;
-  el.providerInfo.textContent = state.backendInfo
+ el.backendUrl.value = state.settings.backendUrl;
+ el.modelId.value = state.settings.model;
+ el.systemPrompt.value = state.settings.systemPrompt;
+ el.outputLanguage.value = state.settings.outputLanguage;
+ el.providerInfo.textContent = state.backendInfo
     ? `Provider: ${state.backendInfo.provider || "không rõ"} · Base: ${state.backendInfo.baseUrl || "-"}`
     : "";
   el.settingsStatus.textContent = "";
@@ -367,11 +382,13 @@ el.saveSettingsButton.addEventListener("click", async () => {
     return;
   }
 
-  state.settings = {
-    backendUrl,
-    model: el.modelId.value.trim()
-  };
-  await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
+ state.settings = {
+   backendUrl,
+   model: el.modelId.value.trim(),
+   systemPrompt: el.systemPrompt.value.trim(),
+   outputLanguage: el.outputLanguage.value.trim()
+ };
+ await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
   el.settingsDialog.close();
   setStatus(`Backend: ${new URL(backendUrl).host}${state.settings.model ? ` · ${state.settings.model}` : ""}`);
 });

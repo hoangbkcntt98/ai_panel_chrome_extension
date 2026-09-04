@@ -101,6 +101,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .compact-button { width: 42px; height: 40px; padding: 0; display: grid; place-items: center; font-size: 17px; }
 .compact-button:disabled { opacity: .5; cursor: default; }
 .provider-info { margin: -8px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
+.field-textarea { resize: vertical; min-height: 80px; font-family: inherit; line-height: 1.5; }
+.field-select { cursor: pointer; }
 
 /* Markdown styles */
 .message-body { white-space: normal; }

@@ -72,10 +72,29 @@
           <button id="refreshModelsButton" type="button" class="secondary-button compact-button">↻</button>
         </div>
         <p class="field-help">Với 9Router, bấm ↻ để lấy model từ <code>/v1/models</code>, hoặc nhập Model ID thủ công.</p>
-        <p id="providerInfo" class="provider-info"></p>
+       <p id="providerInfo" class="provider-info"></p>
 
-        <div class="settings-actions">
-          <button id="testBackendButton" type="button" class="secondary-button">Kiểm tra kết nối</button>
+       <label class="field-label" for="systemPrompt">System Prompt</label>
+       <textarea id="systemPrompt" class="field-input field-textarea" rows="4" placeholder="Để trống để dùng mặc định của backend"></textarea>
+       <p class="field-help">Hướng dẫn AI cách trả lời. Để trống nếu dùng mặc định.</p>
+ 
+       <label class="field-label" for="outputLanguage">Ngôn ngữ phản hồi</label>
+       <select id="outputLanguage" class="field-input field-select">
+         <option value="">Tự động (mặc định)</option>
+         <option value="Tiếng Việt">Tiếng Việt</option>
+         <option value="English">English</option>
+         <option value="日本語">日本語</option>
+         <option value="中文">中文</option>
+         <option value="한국어">한국어</option>
+         <option value="Français">Français</option>
+         <option value="Deutsch">Deutsch</option>
+         <option value="Español">Español</option>
+         <option value="Русский">Русский</option>
+       </select>
+       <p class="field-help">Ép AI luôn phản hồi bằng ngôn ngữ đã chọn.</p>
+ 
+       <div class="settings-actions">
+         <button id="testBackendButton" type="button" class="secondary-button">Kiểm tra kết nối</button>
           <button id="saveSettingsButton" type="button" class="primary-button">Lưu</button>
         </div>
         <p id="settingsStatus" class="status-text"></p>
