@@ -16,55 +16,11 @@ function getSelectionText() {
 }
 
 function getPageText() {
-  // Try multiple selectors in priority order for best content extraction
-  const selectors = [
-    "main",
-    "article",
-    "[role='main']",
-    "#content",
-    "#main-content",
-    ".main-content",
-    ".content",
-    "#main",
-    ".post-content",
-    ".entry-content",
-    ".article-content",
-    ".markdown-body"
-  ];
-
-  let source = "";
-  for (const selector of selectors) {
-    const el = document.querySelector(selector);
-    if (el && el.innerText && el.innerText.trim().length > 200) {
-      source = el.innerText;
-      break;
-    }
-  }
-
-  // Fallback to body, but try to strip nav/footer/sidebar noise
-  if (!source) {
-    const body = document.body;
-    if (!body) return "";
-
-    // Clone body and remove noisy elements
-    const clone = body.cloneNode(true);
-    const noiseSelectors = [
-      "nav", "header", "footer", "aside",
-      "[role='navigation']", "[role='banner']", "[role='contentinfo']",
-      "[role='complementary']",
-      ".sidebar", ".menu", ".navbar", ".footer", ".header",
-      ".ad", ".ads", ".advertisement",
-      ".cookie-banner", ".cookie-notice",
-      ".popup", ".modal", ".overlay",
-      "script", "style", "noscript", "iframe"
-    ];
-    for (const sel of noiseSelectors) {
-      clone.querySelectorAll(sel).forEach((el) => el.remove());
-    }
-    source = clone.innerText || body.innerText || "";
-  }
-
-  return normalizeText(source).slice(0, MAX_PAGE_CHARS);
+  // Use the complete visible text from the page body. Keep the size cap to
+  // avoid sending an unbounded DOM to the model.
+  const body = document.body;
+  if (!body) return "";
+  return normalizeText(body.innerText || "").slice(0, MAX_PAGE_CHARS);
 }
 
 function currentContext() {
