@@ -187,3 +187,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .word-item-source a { color: var(--accent); text-decoration: none; }
 .word-item-date { font-size: 10px; color: var(--muted); margin-top: 4px; }
 .words-empty { text-align: center; color: var(--muted); padding: 30px 10px; font-size: 13px; }
+
+/* ===== Keyboard shortcuts settings ===== */
+.shortcut-label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.shortcut-label-row .field-label { margin-bottom: 6px; }
+.shortcut-grid { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.shortcut-row { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 8px; align-items: center; }
+.shortcut-name { font-size: 12px; color: var(--muted); }
+.shortcut-input { cursor: pointer; text-align: center; font-size: 12px; font-weight: 700; letter-spacing: .03em; color: var(--accent); padding: 7px 10px; }
+.shortcut-input.capturing { border-color: var(--accent); background: var(--surface-2); }

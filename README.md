@@ -132,6 +132,12 @@ Backend sẽ dùng OpenAI Responses API khi `AI_PROVIDER=openai`.
 - Dùng các nút nhanh hoặc gõ câu hỏi.
 - Checkbox **Dùng nội dung trang** quyết định có gửi context của trang lên backend hay không.
 
+### Cài đặt phím tắt
+
+Mở **⚙ → Panel shortcuts**, bấm vào ô tương ứng rồi nhấn tổ hợp phím muốn dùng. Bấm **Save** để lưu; **Reset defaults** khôi phục phím mặc định. Các phím tắt này hoạt động khi Side Panel đang mở (không áp dụng lúc đang nhập văn bản).
+
+Phím tắt chạy toàn cục của Chrome (mở panel, lưu từ, hỏi AI, tóm tắt trang) được thay đổi tại `chrome://extensions/shortcuts`.
+
 ## 8. Backend API
 
 ### `GET /health`

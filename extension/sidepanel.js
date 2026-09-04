@@ -9,6 +9,79 @@ const STORAGE_KEYS = {
   pendingAction: "pendingAction"
 };
 
+const DEFAULT_SHORTCUTS = {
+  explain: "Alt+E",
+  translate: "Alt+T",
+  summarize: "Alt+S",
+  saveWord: "Alt+W",
+  readAloud: "Alt+R",
+  stopTts: "Esc"
+};
+
+const SHORTCUT_ACTIONS = ["explain", "translate", "summarize", "saveWord", "readAloud", "stopTts"];
+const SHORTCUT_INPUT_IDS = {
+  explain: "shortcutExplain",
+  translate: "shortcutTranslate",
+  summarize: "shortcutSummarize",
+  saveWord: "shortcutSaveWord",
+  readAloud: "shortcutReadAloud",
+  stopTts: "shortcutStopTts"
+};
+
+function normalizeShortcut(combo) {
+  return String(combo || "")
+    .trim()
+    .replace(/\s+/g, "")
+    .replace(/^Command\+/i, "Cmd+")
+    .replace(/^Control\+/i, "Ctrl+")
+    .replace(/Escape$/i, "Esc");
+}
+
+function shortcutInput(action) {
+  return document.getElementById(SHORTCUT_INPUT_IDS[action]);
+}
+
+function normalizeKeyLabel(key) {
+  if (key === "Escape") return "Esc";
+  if (key === " ") return "Space";
+  if (key === "+") return "Plus";
+  if (key.length === 1) return key.toUpperCase();
+  return key;
+}
+
+function formatCombo(event) {
+  const parts = [];
+  if (event.ctrlKey) parts.push("Ctrl");
+  if (event.metaKey) parts.push("Cmd");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  const key = event.key;
+  if (key === "Control" || key === "Shift" || key === "Alt" || key === "Meta") return "";
+  if (!key || key === "Unidentified" || key === "Dead") return "";
+  const label = normalizeKeyLabel(key);
+  parts.push(label);
+  return normalizeShortcut(parts.join("+"));
+}
+
+function comboMatchesEvent(combo, event) {
+  combo = normalizeShortcut(combo);
+  if (!combo) return false;
+  const parts = combo.split("+").map((p) => p.trim());
+  const keyPart = parts.pop();
+  const keyLabel = normalizeKeyLabel(event.key);
+  if (keyLabel.toLowerCase() !== String(keyPart).toLowerCase()) return false;
+  const lowerParts = parts.map((part) => part.toLowerCase());
+  const wantCtrl = lowerParts.includes("ctrl");
+  const wantCmd = lowerParts.includes("cmd");
+  const wantAlt = lowerParts.includes("alt");
+  const wantShift = lowerParts.includes("shift");
+  const wantMeta = wantCtrl || wantCmd;
+  if (wantMeta !== (event.ctrlKey || event.metaKey)) return false;
+  if (wantAlt !== event.altKey) return false;
+  if (wantShift !== event.shiftKey) return false;
+  return true;
+}
+
 const state = {
   messages: [],
   selection: "",
@@ -18,12 +91,16 @@ const state = {
     backendUrl: DEFAULT_BACKEND_URL,
     model: "",
     systemPrompt: "",
-    outputLanguage: ""
+    outputLanguage: "",
+    shortcuts: { ...DEFAULT_SHORTCUTS }
   },
   backendInfo: null,
   activeSection: null,   // { sectionKey, title, persistHistory }
   sections: []
 };
+
+let shortcutDraft = { ...DEFAULT_SHORTCUTS };
+let shortcutCaptureInput = null;
 
 const el = {
   chat: document.querySelector("#chat"),
@@ -50,6 +127,7 @@ const el = {
   testBackendButton: document.querySelector("#testBackendButton"),
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
   settingsStatus: document.querySelector("#settingsStatus"),
+  resetShortcutsButton: document.querySelector("#resetShortcutsButton"),
   stopTtsButton: document.querySelector("#stopTtsButton"),
   resetHistoryButton: document.querySelector("#resetHistoryButton"),
   // Section management
@@ -67,8 +145,79 @@ const el = {
   wordsDialog: document.querySelector("#wordsDialog"),
   closeWordsButton: document.querySelector("#closeWordsButton"),
   wordsList: document.querySelector("#wordsList"),
-  wordsCount: document.querySelector("#wordsCount")
+  wordsCount: document.querySelector("#wordsCount"),
+  // Shortcut inputs
+  shortcutExplain: document.querySelector("#shortcutExplain"),
+  shortcutTranslate: document.querySelector("#shortcutTranslate"),
+  shortcutSummarize: document.querySelector("#shortcutSummarize"),
+  shortcutSaveWord: document.querySelector("#shortcutSaveWord"),
+  shortcutReadAloud: document.querySelector("#shortcutReadAloud"),
+  shortcutStopTts: document.querySelector("#shortcutStopTts")
 };
+
+function renderShortcutInputs(shortcuts = DEFAULT_SHORTCUTS) {
+  if (shortcutCaptureInput) {
+    shortcutCaptureInput.classList.remove("capturing");
+    shortcutCaptureInput = null;
+  }
+  for (const action of SHORTCUT_ACTIONS) {
+    const input = shortcutInput(action);
+    if (!input) continue;
+    input.value = normalizeShortcut(shortcuts[action] || "");
+    input.classList.remove("capturing");
+    input.removeAttribute("aria-label");
+  }
+}
+
+function beginShortcutCapture(input) {
+  if (shortcutCaptureInput && shortcutCaptureInput !== input) {
+    const previousAction = SHORTCUT_ACTIONS.find((action) => shortcutInput(action) === shortcutCaptureInput);
+    if (previousAction) {
+      shortcutCaptureInput.value = normalizeShortcut(shortcutDraft[previousAction] || "");
+    }
+    shortcutCaptureInput.classList.remove("capturing");
+  }
+  shortcutCaptureInput = input;
+  input.classList.add("capturing");
+  input.value = "Press keys…";
+  input.setAttribute("aria-label", "Press the keyboard combination");
+}
+
+function endShortcutCapture() {
+  if (shortcutCaptureInput) {
+    shortcutCaptureInput.classList.remove("capturing");
+  }
+  shortcutCaptureInput = null;
+}
+
+function readShortcutDraft() {
+  const draft = {};
+  for (const action of SHORTCUT_ACTIONS) {
+    const input = shortcutInput(action);
+    if (shortcutCaptureInput === input) {
+      // The user focused this field but has not completed a new combo yet.
+      draft[action] = normalizeShortcut(shortcutDraft[action] || "");
+    } else {
+      draft[action] = normalizeShortcut(input?.value || "");
+    }
+  }
+  return draft;
+}
+
+function validateShortcutDraft(draft) {
+  const seen = new Map();
+  for (const action of SHORTCUT_ACTIONS) {
+    const combo = normalizeShortcut(draft[action]);
+    if (!combo) continue;
+    const key = combo.toLowerCase();
+    if (seen.has(key)) {
+      const previous = seen.get(key);
+      return `Shortcut "${combo}" is assigned to both ${previous} and ${action}.`;
+    }
+    seen.set(key, action);
+  }
+  return "";
+}
 
 function normalizeBackendUrl(url) {
   return (url || DEFAULT_BACKEND_URL).trim().replace(/\/+$/, "");
@@ -590,8 +739,15 @@ async function loadState() {
     backendUrl: normalizeBackendUrl(stored[STORAGE_KEYS.settings]?.backendUrl || DEFAULT_BACKEND_URL),
     model: String(stored[STORAGE_KEYS.settings]?.model || "").trim(),
     systemPrompt: String(stored[STORAGE_KEYS.settings]?.systemPrompt || "").trim(),
-    outputLanguage: String(stored[STORAGE_KEYS.settings]?.outputLanguage || "").trim()
+    outputLanguage: String(stored[STORAGE_KEYS.settings]?.outputLanguage || "").trim(),
+    shortcuts: Object.fromEntries(
+      SHORTCUT_ACTIONS.map((action) => [
+        action,
+        normalizeShortcut(stored[STORAGE_KEYS.settings]?.shortcuts?.[action] || DEFAULT_SHORTCUTS[action])
+      ])
+    )
   };
+  shortcutDraft = { ...state.settings.shortcuts };
 
   const selectionCandidate = stored[STORAGE_KEYS.pendingSelection] || stored[STORAGE_KEYS.lastSelection];
   if (selectionCandidate?.text) state.selection = selectionCandidate.text;
@@ -603,6 +759,7 @@ async function loadState() {
   el.modelId.value = state.settings.model;
   el.systemPrompt.value = state.settings.systemPrompt;
   el.outputLanguage.value = state.settings.outputLanguage;
+  renderShortcutInputs(state.settings.shortcuts);
 
   state.activeSection = stored[STORAGE_KEYS.activeSection] || null;
 
@@ -837,6 +994,8 @@ el.settingsButton.addEventListener("click", () => {
   el.modelId.value = state.settings.model;
   el.systemPrompt.value = state.settings.systemPrompt;
   el.outputLanguage.value = state.settings.outputLanguage;
+  shortcutDraft = { ...(state.settings.shortcuts || DEFAULT_SHORTCUTS) };
+  renderShortcutInputs(shortcutDraft);
   el.providerInfo.textContent = state.backendInfo
     ? `Provider: ${state.backendInfo.provider || "unknown"} · Base: ${state.backendInfo.baseUrl || "-"}`
     : "";
@@ -846,6 +1005,12 @@ el.settingsButton.addEventListener("click", () => {
 
 el.testBackendButton.addEventListener("click", testBackend);
 el.refreshModelsButton.addEventListener("click", refreshModels);
+el.resetShortcutsButton?.addEventListener("click", () => {
+  shortcutDraft = { ...DEFAULT_SHORTCUTS };
+  renderShortcutInputs(shortcutDraft);
+  el.settingsStatus.textContent = "Shortcut defaults restored. Click Save to apply.";
+  el.settingsStatus.classList.remove("error");
+});
 
 el.saveSettingsButton.addEventListener("click", async () => {
   const backendUrl = normalizeBackendUrl(el.backendUrl.value);
@@ -856,12 +1021,24 @@ el.saveSettingsButton.addEventListener("click", async () => {
     el.settingsStatus.classList.add("error");
     return;
   }
+  const shortcuts = readShortcutDraft();
+  const shortcutError = validateShortcutDraft(shortcuts);
+  if (shortcutError) {
+    el.settingsStatus.textContent = shortcutError;
+    el.settingsStatus.classList.add("error");
+    return;
+  }
+  endShortcutCapture();
   state.settings = {
     backendUrl,
     model: el.modelId.value.trim(),
     systemPrompt: el.systemPrompt.value.trim(),
-    outputLanguage: el.outputLanguage.value.trim()
+    outputLanguage: el.outputLanguage.value.trim(),
+    shortcuts: Object.fromEntries(
+      SHORTCUT_ACTIONS.map((action) => [action, normalizeShortcut(shortcuts[action])])
+    )
   };
+  shortcutDraft = { ...state.settings.shortcuts };
   await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
   el.settingsDialog.close();
   setStatus(`Backend: ${new URL(backendUrl).host}${state.settings.model ? ` · ${state.settings.model}` : ""}`);
@@ -870,6 +1047,19 @@ el.saveSettingsButton.addEventListener("click", async () => {
     el.sectionSelect.value = state.activeSection.sectionKey;
   }
 });
+
+// Shortcut capture fields: click/focus a field, then press any key combination.
+for (const action of SHORTCUT_ACTIONS) {
+  const input = shortcutInput(action);
+  if (!input) continue;
+  input.addEventListener("focus", () => beginShortcutCapture(input));
+  input.addEventListener("click", () => beginShortcutCapture(input));
+  input.addEventListener("blur", () => {
+    if (shortcutCaptureInput !== input) return;
+    input.value = normalizeShortcut(shortcutDraft[action] || "");
+    endShortcutCapture();
+  });
+}
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== "local") return;
@@ -928,46 +1118,72 @@ async function saveWordToApi(text, sourceUrl, sourceTitle) {
   }
 }
 
-// ===== In-panel keyboard shortcuts =====
+// ===== In-panel keyboard shortcuts (configurable) =====
 document.addEventListener("keydown", (event) => {
-  // Don't interfere when typing in inputs/textareas
+  const shortcutTarget = event.target?.classList?.contains("shortcut-input")
+    ? event.target
+    : null;
+  if (shortcutTarget) {
+    const action = SHORTCUT_ACTIONS.find((name) => shortcutInput(name) === shortcutTarget);
+    if (!action) return;
+    if (shortcutCaptureInput !== shortcutTarget) beginShortcutCapture(shortcutTarget);
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      shortcutDraft[action] = "";
+      shortcutTarget.value = "";
+      endShortcutCapture();
+      return;
+    }
+    const combo = formatCombo(event);
+    if (!combo) {
+      // Keep the previous value while waiting for a non-modifier key.
+      shortcutTarget.value = normalizeShortcut(shortcutDraft[action] || "");
+      return;
+    }
+    shortcutDraft[action] = combo;
+    shortcutTarget.value = combo;
+    endShortcutCapture();
+    return;
+  }
+
+  // Don't interfere when typing in inputs/textareas (except shortcut capture mode)
   const tag = event.target?.tagName?.toLowerCase();
   const isTyping = tag === "input" || tag === "textarea" || tag === "select" || event.target?.isContentEditable;
-  if (isTyping) return;
+  if (isTyping && !event.target?.classList?.contains("shortcut-input")) return;
 
-  // Alt+E: Explain
-  if (event.altKey && event.key.toLowerCase() === "e" && !event.ctrlKey && !event.metaKey) {
+  const sc = state.settings.shortcuts || DEFAULT_SHORTCUTS;
+
+  if (comboMatchesEvent(sc.explain, event)) {
     event.preventDefault();
     askAssistant(quickPrompt("explain"), true);
     return;
   }
-  // Alt+T: Translate
-  if (event.altKey && event.key.toLowerCase() === "t" && !event.ctrlKey && !event.metaKey) {
+  if (comboMatchesEvent(sc.translate, event)) {
     event.preventDefault();
     askAssistant(quickPrompt("translate"), true);
     return;
   }
-  // Alt+S: Summarize
-  if (event.altKey && event.key.toLowerCase() === "s" && !event.ctrlKey && !event.metaKey) {
+  if (comboMatchesEvent(sc.summarize, event)) {
     event.preventDefault();
     askAssistant(quickPrompt("summarize"), true);
     return;
   }
-  // Alt+W: Save word
-  if (event.altKey && event.key.toLowerCase() === "w" && !event.ctrlKey && !event.metaKey) {
+  if (comboMatchesEvent(sc.saveWord, event)) {
     event.preventDefault();
     saveWord();
     return;
   }
-  // Alt+R: Read aloud selected text
-  if (event.altKey && event.key.toLowerCase() === "r" && !event.ctrlKey && !event.metaKey) {
+  if (comboMatchesEvent(sc.readAloud, event)) {
     event.preventDefault();
     if (state.selection) ttsSpeak(state.selection, el.readSelectionButton);
     return;
   }
-  // Escape: close dialogs / stop TTS
-  if (event.key === "Escape") {
-    if (tts.speaking) ttsStop();
+  if (comboMatchesEvent(sc.stopTts, event)) {
+    if (tts.speaking) {
+      event.preventDefault();
+      ttsStop();
+    }
     return;
   }
 });

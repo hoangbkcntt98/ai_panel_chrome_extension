@@ -27,26 +27,43 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
   "commands": {
     "_execute_action": {
-      "suggested_key": { "default": "Ctrl+Shift+S", "mac": "Command+Shift+S" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+S",
+        "mac": "Command+Shift+S"
+      },
       "description": "Open AI Study Sidekick panel"
     },
     "save-word": {
-      "suggested_key": { "default": "Ctrl+Shift+W", "mac": "Command+Shift+W" },
+      "suggested_key": {
+        "default": "Alt+Shift+W",
+        "mac": "Option+Shift+W"
+      },
       "description": "Save selected text as a word"
     },
     "ask-ai": {
-      "suggested_key": { "default": "Ctrl+Shift+A", "mac": "Command+Shift+A" },
+      "suggested_key": {
+        "default": "Alt+Shift+A",
+        "mac": "Option+Shift+A"
+      },
       "description": "Ask AI about selected text"
     },
     "summarize-page": {
-      "suggested_key": { "default": "Ctrl+Shift+M", "mac": "Command+Shift+M" },
+      "suggested_key": {
+        "default": "Ctrl+Shift+M",
+        "mac": "Command+Shift+M"
+      },
       "description": "Summarize current page"
     }
   },

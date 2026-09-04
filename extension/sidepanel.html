@@ -142,6 +142,38 @@
         </select>
         <p class="field-help">Force the AI to always respond in the selected language.</p>
 
+        <div class="shortcut-label-row">
+          <label class="field-label">Panel shortcuts (click a field, then press your combo)</label>
+          <button id="resetShortcutsButton" type="button" class="text-button">Reset defaults</button>
+        </div>
+        <div class="shortcut-grid">
+          <div class="shortcut-row">
+            <span class="shortcut-name">Explain</span>
+            <input id="shortcutExplain" class="field-input shortcut-input" type="text" readonly placeholder="Alt+E" />
+          </div>
+          <div class="shortcut-row">
+            <span class="shortcut-name">Translate</span>
+            <input id="shortcutTranslate" class="field-input shortcut-input" type="text" readonly placeholder="Alt+T" />
+          </div>
+          <div class="shortcut-row">
+            <span class="shortcut-name">Summarize</span>
+            <input id="shortcutSummarize" class="field-input shortcut-input" type="text" readonly placeholder="Alt+S" />
+          </div>
+          <div class="shortcut-row">
+            <span class="shortcut-name">Save word</span>
+            <input id="shortcutSaveWord" class="field-input shortcut-input" type="text" readonly placeholder="Alt+W" />
+          </div>
+          <div class="shortcut-row">
+            <span class="shortcut-name">Read aloud</span>
+            <input id="shortcutReadAloud" class="field-input shortcut-input" type="text" readonly placeholder="Alt+R" />
+          </div>
+          <div class="shortcut-row">
+            <span class="shortcut-name">Stop TTS</span>
+            <input id="shortcutStopTts" class="field-input shortcut-input" type="text" readonly placeholder="Esc" />
+          </div>
+        </div>
+        <p class="field-help">Press <code>Esc</code> to clear a combo. Global shortcuts: open <code>chrome://extensions/shortcuts</code>.</p>
+
         <div class="settings-actions">
           <button id="testBackendButton" type="button" class="secondary-button">Test connection</button>
           <button id="saveSettingsButton" type="button" class="primary-button">Save</button>
