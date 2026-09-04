@@ -3,6 +3,7 @@ import { appendFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import pg from "pg";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOG_FILE = join(__dirname, "server.log");
 
@@ -30,6 +31,108 @@ const ALLOWED_MODELS = new Set(
     .filter(Boolean)
 );
 
+
+// ===== PostgreSQL config =====
+const PG_CONFIG = {
+  host: process.env.PG_HOST || "localhost",
+  port: Number(process.env.PG_PORT || 5432),
+  database: process.env.PG_DATABASE || "ai_sidekick_db",
+  user: process.env.PG_USER || "ai_sidekick",
+  password: process.env.PG_PASSWORD || "ai_sidekick_pass",
+  max: 5,
+  idleTimeoutMillis: 30000
+};
+
+const pgPool = new pg.Pool(PG_CONFIG);
+
+pgPool.on("error", (err) => {
+  log("PostgreSQL pool error: " + err.message);
+});
+
+async function ensureSchema() {
+  try {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS chat_sections (
+        id SERIAL PRIMARY KEY,
+        section_key TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        persist_history BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id SERIAL PRIMARY KEY,
+        section_key TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        content TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT fk_section FOREIGN KEY (section_key)
+          REFERENCES chat_sections(section_key) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_chat_messages_section ON chat_messages(section_key, created_at);
+    `);
+    log("Database schema ensured");
+  } catch (err) {
+    log("Schema init error: " + err.message);
+  }
+}
+
+async function createSection(sectionKey, title, persistHistory) {
+  const result = await pgPool.query(
+    `INSERT INTO chat_sections (section_key, title, persist_history)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (section_key)
+     DO UPDATE SET title = EXCLUDED.title, persist_history = EXCLUDED.persist_history, updated_at = NOW()
+     RETURNING *`,
+    [sectionKey, title, persistHistory]
+  );
+  return result.rows[0];
+}
+
+async function listSections() {
+  const result = await pgPool.query(
+    `SELECT s.*, COUNT(m.id) as message_count
+     FROM chat_sections s
+     LEFT JOIN chat_messages m ON m.section_key = s.section_key
+     GROUP BY s.id
+     ORDER BY s.updated_at DESC`
+  );
+  return result.rows;
+}
+
+async function deleteSection(sectionKey) {
+  await pgPool.query("DELETE FROM chat_sections WHERE section_key = $1", [sectionKey]);
+}
+
+async function updateSection(sectionKey, title, persistHistory) {
+  const result = await pgPool.query(
+    `UPDATE chat_sections SET title = $2, persist_history = $3, updated_at = NOW()
+     WHERE section_key = $1 RETURNING *`,
+    [sectionKey, title, persistHistory]
+  );
+  return result.rows[0];
+}
+
+async function saveMessagesToDb(sectionKey, messages) {
+  if (!sectionKey || !messages.length) return;
+  // Delete old messages and insert new ones (full replace)
+  await pgPool.query("DELETE FROM chat_messages WHERE section_key = $1", [sectionKey]);
+  for (const msg of messages) {
+    await pgPool.query(
+      "INSERT INTO chat_messages (section_key, role, content) VALUES ($1, $2, $3)",
+      [sectionKey, msg.role, msg.content]
+    );
+  }
+  await pgPool.query("UPDATE chat_sections SET updated_at = NOW() WHERE section_key = $1", [sectionKey]);
+}
+
+async function loadMessagesFromDb(sectionKey) {
+  const result = await pgPool.query(
+    "SELECT role, content FROM chat_messages WHERE section_key = $1 ORDER BY created_at ASC",
+    [sectionKey]
+  );
+  return result.rows;
+}
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
 }
@@ -333,6 +436,89 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+
+  // ===== Section management APIs =====
+  if (req.method === "GET" && url.pathname === "/api/sections") {
+    try {
+      const sections = await listSections();
+      return sendJson(res, 200, { sections });
+    } catch (error) {
+      log("GET /api/sections error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/sections") {
+    try {
+      const body = await readJson(req);
+      const sectionKey = clean(body.sectionKey, 200);
+      const title = clean(body.title, 500);
+      const persistHistory = Boolean(body.persistHistory);
+      if (!sectionKey || !title) return sendJson(res, 400, { error: "Thieu sectionKey hoac title" });
+      const section = await createSection(sectionKey, title, persistHistory);
+      log(`Created/updated section: ${sectionKey} (persist=${persistHistory})`);
+      return sendJson(res, 200, { section });
+    } catch (error) {
+      log("POST /api/sections error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  if (req.method === "DELETE" && url.pathname.startsWith("/api/sections/")) {
+    try {
+      const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", ""));
+      if (!sectionKey) return sendJson(res, 400, { error: "Thieu sectionKey" });
+      await deleteSection(sectionKey);
+      log(`Deleted section: ${sectionKey}`);
+      return sendJson(res, 200, { ok: true });
+    } catch (error) {
+      log("DELETE /api/sections error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  if (req.method === "PUT" && url.pathname.startsWith("/api/sections/")) {
+    try {
+      const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", ""));
+      const body = await readJson(req);
+      const title = clean(body.title, 500);
+      const persistHistory = Boolean(body.persistHistory);
+      if (!sectionKey || !title) return sendJson(res, 400, { error: "Thieu sectionKey hoac title" });
+      const section = await updateSection(sectionKey, title, persistHistory);
+      return sendJson(res, 200, { section });
+    } catch (error) {
+      log("PUT /api/sections error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/api/sections/") && url.pathname.endsWith("/messages")) {
+    try {
+      const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", "").replace("/messages", ""));
+      if (!sectionKey) return sendJson(res, 400, { error: "Thieu sectionKey" });
+      const messages = await loadMessagesFromDb(sectionKey);
+      return sendJson(res, 200, { messages });
+    } catch (error) {
+      log("GET messages error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname.startsWith("/api/sections/") && url.pathname.endsWith("/messages")) {
+    try {
+      const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", "").replace("/messages", ""));
+      const body = await readJson(req);
+      const messages = Array.isArray(body.messages) ? body.messages : [];
+      if (!sectionKey) return sendJson(res, 400, { error: "Thieu sectionKey" });
+      await saveMessagesToDb(sectionKey, messages);
+      log(`Saved ${messages.length} messages for section: ${sectionKey}`);
+      return sendJson(res, 200, { ok: true });
+    } catch (error) {
+      log("POST messages error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
   return sendJson(res, 404, { error: "Not found" });
 });
 
@@ -343,4 +529,5 @@ server.listen(PORT, () => {
   log(`Model: ${AI_MODEL || "not configured"}`);
   log(`API key: ${AI_API_KEY ? "configured" : "missing"}`);
 });
+  ensureSchema();
 

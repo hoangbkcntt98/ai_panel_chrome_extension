@@ -1,9 +1,10 @@
-﻿const DEFAULT_BACKEND_URL = "http://localhost:8787";
+const DEFAULT_BACKEND_URL = "http://localhost:8787";
 const STORAGE_KEYS = {
   messages: "chatMessages",
   settings: "assistantSettings",
   lastSelection: "lastSelection",
-  pendingSelection: "pendingSelection"
+  pendingSelection: "pendingSelection",
+  activeSection: "activeSection"
 };
 
 const state = {
@@ -17,7 +18,9 @@ const state = {
     systemPrompt: "",
     outputLanguage: ""
   },
-  backendInfo: null
+  backendInfo: null,
+  activeSection: null,   // { sectionKey, title, persistHistory }
+  sections: []
 };
 
 const el = {
@@ -38,53 +41,67 @@ const el = {
   modelId: document.querySelector("#modelId"),
   modelOptions: document.querySelector("#modelOptions"),
   refreshModelsButton: document.querySelector("#refreshModelsButton"),
- providerInfo: document.querySelector("#providerInfo"),
- systemPrompt: document.querySelector("#systemPrompt"),
- outputLanguage: document.querySelector("#outputLanguage"),
- testBackendButton: document.querySelector("#testBackendButton"),
+  providerInfo: document.querySelector("#providerInfo"),
+  systemPrompt: document.querySelector("#systemPrompt"),
+  outputLanguage: document.querySelector("#outputLanguage"),
+  testBackendButton: document.querySelector("#testBackendButton"),
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
-  settingsStatus: document.querySelector("#settingsStatus")
+  settingsStatus: document.querySelector("#settingsStatus"),
+  // Section management
+  sectionSelect: document.querySelector("#sectionSelect"),
+  newSectionButton: document.querySelector("#newSectionButton"),
+  newSectionDialog: document.querySelector("#newSectionDialog"),
+  newSectionTitle: document.querySelector("#newSectionTitle"),
+  newSectionPersist: document.querySelector("#newSectionPersist"),
+  cancelNewSectionButton: document.querySelector("#cancelNewSectionButton"),
+  createSectionButton: document.querySelector("#createSectionButton"),
+  newSectionStatus: document.querySelector("#newSectionStatus")
 };
 
 function normalizeBackendUrl(url) {
   return (url || DEFAULT_BACKEND_URL).trim().replace(/\/+$/, "");
 }
 
-// Simple markdown to HTML converter
+function getApiBase() {
+  return state.settings.backendUrl;
+}
+
+// ===== Section key generator =====
+function slugify(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 100);
+}
+
+// ===== Markdown parser (unchanged) =====
 function parseMarkdown(text) {
-  if (!text) return '';
-  
+  if (!text) return "";
   let html = text
-    // Escape HTML first
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    // Bold: **text** or __text__
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // Italic: *text* or _text_
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/_(.+?)_/g, '<em>$1</em>')
-    // Code: `text`
-    .replace(/`(.+?)`/g, '<code>$1</code>')
-    // Headers: ### text, ## text, # text
-    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-    // Links: [text](url)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/__(.+?)__/g, "<strong>$1</strong>")
+    .replace(/\*(.+?)\*/g, "<em>$1</em>")
+    .replace(/_(.+?)_/g, "<em>$1</em>")
+    .replace(/`(.+?)`/g, "<code>$1</code>")
+    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
+    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
+    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
     .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    // Unordered lists: - item or * item
-    .replace(/^[\-\*] (.+)$/gm, '<li>$1</li>')
-    // Line breaks: two spaces at end or \n\n
-    .replace(/  \n/g, '<br>')
-    .replace(/\n\n/g, '</p><p>')
-    // Single line break
-    .replace(/\n/g, '<br>');
-  
-  // Wrap consecutive <li> in <ul>
-  html = html.replace(/(<li>.*?<\/li>\s*)+/g, '<ul>$&</ul>');
-  
-  return '<p>' + html + '</p>';
+    .replace(/^[\-\*] (.+)$/gm, "<li>$1</li>")
+    .replace(/  \n/g, "<br>")
+    .replace(/\n\n/g, "</p><p>")
+    .replace(/\n/g, "<br>");
+  html = html.replace(/(<li>.*?<\/li>\s*)+/g, "<ul>$&</ul>");
+  return "<p>" + html + "</p>";
 }
 
 function setStatus(text, isError = false) {
@@ -96,11 +113,19 @@ function showEmptyState() {
   el.chat.replaceChildren();
   const wrapper = document.createElement("div");
   wrapper.className = "empty-state";
-  wrapper.innerHTML = `
-    <div class="sparkle">✦</div>
-    <h2>Hỏi ngay trên trang đang mở</h2>
-    <p>Bôi đen một đoạn văn rồi chọn "Giải thích", "Dịch → VI", hoặc đặt câu hỏi ở ô bên dưới.</p>
-  `;
+  if (state.activeSection) {
+    wrapper.innerHTML = `
+      <div class="sparkle">✦</div>
+      <h2>${state.activeSection.title}</h2>
+      <p>Đặt câu hỏi hoặc bôi đen đoạn văn trên trang rồi chọn "Giải thích".</p>
+    `;
+  } else {
+    wrapper.innerHTML = `
+      <div class="sparkle">✦</div>
+      <h2>Chọn chủ đề học</h2>
+      <p>Tạo chủ đề mới (＋) hoặc chọn từ danh sách để bắt đầu. Bôi đen đoạn văn rồi hỏi AI.</p>
+    `;
+  }
   el.chat.appendChild(wrapper);
 }
 
@@ -109,7 +134,6 @@ function renderMessages() {
     showEmptyState();
     return;
   }
-
   el.chat.replaceChildren();
   for (const message of state.messages) {
     const node = el.messageTemplate.content.firstElementChild.cloneNode(true);
@@ -118,7 +142,6 @@ function renderMessages() {
     node.querySelector(".message-body").innerHTML = parseMarkdown(message.content);
     el.chat.appendChild(node);
   }
-
   if (state.loading) {
     const loading = el.messageTemplate.content.firstElementChild.cloneNode(true);
     loading.classList.add("assistant", "loading");
@@ -126,7 +149,6 @@ function renderMessages() {
     loading.querySelector(".message-body").textContent = "Đang suy nghĩ";
     el.chat.appendChild(loading);
   }
-
   requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }));
 }
 
@@ -136,24 +158,186 @@ function renderSelection() {
     el.selectionText.textContent = "";
     return;
   }
-
   el.selectionCard.classList.remove("hidden");
   el.selectionText.textContent = state.selection;
 }
 
-async function saveMessages() {
-  await chrome.storage.local.set({ [STORAGE_KEYS.messages]: state.messages.slice(-40) });
+// ===== Section management =====
+async function fetchSections() {
+  try {
+    const res = await fetch(`${getApiBase()}/api/sections`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    state.sections = Array.isArray(data.sections) ? data.sections : [];
+    renderSectionSelect();
+  } catch (err) {
+    console.warn("Cannot fetch sections:", err.message);
+  }
 }
 
+function renderSectionSelect() {
+  const prevValue = el.sectionSelect.value;
+  el.sectionSelect.replaceChildren();
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "— Chọn chủ đề —";
+  el.sectionSelect.appendChild(placeholder);
+
+  for (const sec of state.sections) {
+    const opt = document.createElement("option");
+    opt.value = sec.section_key;
+    const persistTag = sec.persist_history ? " 💾" : "";
+    const count = sec.message_count ? ` (${sec.message_count})` : "";
+    opt.textContent = sec.title + persistTag + count;
+    el.sectionSelect.appendChild(opt);
+  }
+
+  el.sectionSelect.value = state.activeSection?.sectionKey || prevValue || "";
+}
+
+async function selectSection(sectionKey) {
+  // Save current section's messages before switching
+  await persistCurrentSection();
+
+  if (!sectionKey) {
+    state.activeSection = null;
+    state.messages = [];
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.messages]: [],
+      [STORAGE_KEYS.activeSection]: null
+    });
+    renderMessages();
+    setStatus("");
+    return;
+  }
+
+  const sec = state.sections.find((s) => s.section_key === sectionKey);
+  if (!sec) return;
+
+  state.activeSection = {
+    sectionKey: sec.section_key,
+    title: sec.title,
+    persistHistory: sec.persist_history
+  };
+  await chrome.storage.local.set({ [STORAGE_KEYS.activeSection]: state.activeSection });
+
+  // Load messages from DB if persist is on
+  if (sec.persist_history) {
+    setStatus("Đang tải lịch sử chat…");
+    try {
+      const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}/messages`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      state.messages = Array.isArray(data.messages) ? data.messages : [];
+      // Also save to local storage for quick render
+      await chrome.storage.local.set({ [STORAGE_KEYS.messages]: state.messages });
+    } catch (err) {
+      setStatus(`Không tải được lịch sử: ${err.message}`, true);
+      state.messages = [];
+    }
+    renderMessages();
+    const count = state.messages.length;
+    setStatus(count ? `Đã tải ${count} tin nhắn` : "Chủ đề chưa có lịch sử chat");
+  } else {
+    // Load from local storage
+    const stored = await chrome.storage.local.get(STORAGE_KEYS.messages);
+    state.messages = Array.isArray(stored[STORAGE_KEYS.messages]) ? stored[STORAGE_KEYS.messages] : [];
+    renderMessages();
+    setStatus("");
+  }
+}
+
+async function persistCurrentSection() {
+  if (!state.activeSection || !state.activeSection.persistHistory) return;
+  if (!state.messages.length) return;
+  try {
+    await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(state.activeSection.sectionKey)}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: state.messages })
+    });
+  } catch (err) {
+    console.warn("Persist failed:", err.message);
+  }
+}
+
+async function createNewSection() {
+  const title = el.newSectionTitle.value.trim();
+  const persistHistory = el.newSectionPersist.checked;
+  if (!title) {
+    el.newSectionStatus.textContent = "Vui lòng nhập tên chủ đề";
+    el.newSectionStatus.classList.add("error");
+    return;
+  }
+
+  const sectionKey = slugify(title) || `section-${Date.now()}`;
+  el.createSectionButton.disabled = true;
+  el.newSectionStatus.textContent = "Đang tạo…";
+  el.newSectionStatus.classList.remove("error");
+
+  try {
+    const res = await fetch(`${getApiBase()}/api/sections`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sectionKey, title, persistHistory })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+    el.newSectionStatus.textContent = "";
+    el.newSectionDialog.close();
+    el.newSectionTitle.value = "";
+    el.newSectionPersist.checked = false;
+
+    await fetchSections();
+    await selectSection(sectionKey);
+    el.sectionSelect.value = sectionKey;
+  } catch (err) {
+    el.newSectionStatus.textContent = `Lỗi: ${err.message}`;
+    el.newSectionStatus.classList.add("error");
+  } finally {
+    el.createSectionButton.disabled = false;
+  }
+}
+
+async function deleteCurrentSection() {
+  if (!state.activeSection) return;
+  const sectionKey = state.activeSection.sectionKey;
+  try {
+    await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}`, { method: "DELETE" });
+    state.activeSection = null;
+    state.messages = [];
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.messages]: [],
+      [STORAGE_KEYS.activeSection]: null
+    });
+    await fetchSections();
+    renderMessages();
+    setStatus("Đã xóa chủ đề");
+  } catch (err) {
+    setStatus(`Lỗi xóa: ${err.message}`, true);
+  }
+}
+
+// ===== Message persistence =====
+async function saveMessages() {
+  await chrome.storage.local.set({ [STORAGE_KEYS.messages]: state.messages.slice(-40) });
+  // If section has persist, also save to DB
+  if (state.activeSection?.persistHistory) {
+    await persistCurrentSection();
+  }
+}
+
+// ===== State loading =====
 async function loadState() {
   const stored = await chrome.storage.local.get(Object.values(STORAGE_KEYS));
   state.messages = Array.isArray(stored[STORAGE_KEYS.messages]) ? stored[STORAGE_KEYS.messages] : [];
- state.settings = {
-   backendUrl: normalizeBackendUrl(stored[STORAGE_KEYS.settings]?.backendUrl || DEFAULT_BACKEND_URL),
-   model: String(stored[STORAGE_KEYS.settings]?.model || "").trim(),
-   systemPrompt: String(stored[STORAGE_KEYS.settings]?.systemPrompt || "").trim(),
-   outputLanguage: String(stored[STORAGE_KEYS.settings]?.outputLanguage || "").trim()
- };
+  state.settings = {
+    backendUrl: normalizeBackendUrl(stored[STORAGE_KEYS.settings]?.backendUrl || DEFAULT_BACKEND_URL),
+    model: String(stored[STORAGE_KEYS.settings]?.model || "").trim(),
+    systemPrompt: String(stored[STORAGE_KEYS.settings]?.systemPrompt || "").trim(),
+    outputLanguage: String(stored[STORAGE_KEYS.settings]?.outputLanguage || "").trim()
+  };
 
   const selectionCandidate = stored[STORAGE_KEYS.pendingSelection] || stored[STORAGE_KEYS.lastSelection];
   if (selectionCandidate?.text) state.selection = selectionCandidate.text;
@@ -161,11 +345,15 @@ async function loadState() {
     await chrome.storage.local.remove(STORAGE_KEYS.pendingSelection);
   }
 
- el.backendUrl.value = state.settings.backendUrl;
- el.modelId.value = state.settings.model;
- el.systemPrompt.value = state.settings.systemPrompt;
- el.outputLanguage.value = state.settings.outputLanguage;
- renderMessages();
+  el.backendUrl.value = state.settings.backendUrl;
+  el.modelId.value = state.settings.model;
+  el.systemPrompt.value = state.settings.systemPrompt;
+  el.outputLanguage.value = state.settings.outputLanguage;
+
+  // Restore active section
+  state.activeSection = stored[STORAGE_KEYS.activeSection] || null;
+
+  renderMessages();
   renderSelection();
   await refreshPageContext();
 }
@@ -174,10 +362,8 @@ async function refreshPageContext() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!tab?.id) throw new Error("Không tìm thấy tab đang mở");
-
     const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTEXT" });
     if (!response?.ok) throw new Error("Trang không hỗ trợ đọc nội dung");
-
     state.context = response.context;
     if (response.context.selection) state.selection = response.context.selection;
     el.pageLabel.textContent = response.context.title || "Trang hiện tại";
@@ -199,6 +385,7 @@ function buildContextPayload() {
   };
 }
 
+// ===== Chat =====
 async function askAssistant(text) {
   const content = (text || "").trim();
   if (!content || state.loading) return;
@@ -212,24 +399,22 @@ async function askAssistant(text) {
 
   try {
     await refreshPageContext();
-    const response = await fetch(`${state.settings.backendUrl}/chat`, {
+    const response = await fetch(`${getApiBase()}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-     body: JSON.stringify({
-       messages: state.messages.slice(-12),
-       context: buildContextPayload(),
-       model: state.settings.model || undefined,
-       systemPrompt: state.settings.systemPrompt || undefined,
-       outputLanguage: state.settings.outputLanguage || undefined
-     })
+      body: JSON.stringify({
+        messages: state.messages.slice(-12),
+        context: buildContextPayload(),
+        model: state.settings.model || undefined,
+        systemPrompt: state.settings.systemPrompt || undefined,
+        outputLanguage: state.settings.outputLanguage || undefined
+      })
     });
 
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.error || `Backend trả về HTTP ${response.status}`);
-    }
-
+    if (!response.ok) throw new Error(data.error || `Backend trả về HTTP ${response.status}`);
     if (!data.text) throw new Error("Backend không trả về nội dung");
+
     state.messages.push({ role: "assistant", content: data.text });
     if (data.model && !state.settings.model) {
       state.settings.model = data.model;
@@ -270,6 +455,7 @@ function quickPrompt(action) {
   return "";
 }
 
+// ===== Model management =====
 function renderModelOptions(models = []) {
   el.modelOptions.replaceChildren();
   for (const model of models) {
@@ -322,6 +508,7 @@ async function testBackend() {
   }
 }
 
+// ===== Event listeners =====
 el.sendButton.addEventListener("click", () => {
   const text = el.messageInput.value;
   el.messageInput.value = "";
@@ -357,12 +544,33 @@ el.clearChatButton.addEventListener("click", async () => {
   setStatus("Đã xóa lịch sử chat");
 });
 
+el.sectionSelect.addEventListener("change", () => selectSection(el.sectionSelect.value));
+
+el.newSectionButton.addEventListener("click", () => {
+  el.newSectionTitle.value = "";
+  el.newSectionPersist.checked = false;
+  el.newSectionStatus.textContent = "";
+  el.newSectionStatus.classList.remove("error");
+  el.newSectionDialog.showModal();
+  setTimeout(() => el.newSectionTitle.focus(), 50);
+});
+
+el.cancelNewSectionButton.addEventListener("click", () => el.newSectionDialog.close());
+el.createSectionButton.addEventListener("click", createNewSection);
+
+el.newSectionTitle.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    createNewSection();
+  }
+});
+
 el.settingsButton.addEventListener("click", () => {
- el.backendUrl.value = state.settings.backendUrl;
- el.modelId.value = state.settings.model;
- el.systemPrompt.value = state.settings.systemPrompt;
- el.outputLanguage.value = state.settings.outputLanguage;
- el.providerInfo.textContent = state.backendInfo
+  el.backendUrl.value = state.settings.backendUrl;
+  el.modelId.value = state.settings.model;
+  el.systemPrompt.value = state.settings.systemPrompt;
+  el.outputLanguage.value = state.settings.outputLanguage;
+  el.providerInfo.textContent = state.backendInfo
     ? `Provider: ${state.backendInfo.provider || "không rõ"} · Base: ${state.backendInfo.baseUrl || "-"}`
     : "";
   el.settingsStatus.textContent = "";
@@ -381,16 +589,21 @@ el.saveSettingsButton.addEventListener("click", async () => {
     el.settingsStatus.classList.add("error");
     return;
   }
-
- state.settings = {
-   backendUrl,
-   model: el.modelId.value.trim(),
-   systemPrompt: el.systemPrompt.value.trim(),
-   outputLanguage: el.outputLanguage.value.trim()
- };
- await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
+  state.settings = {
+    backendUrl,
+    model: el.modelId.value.trim(),
+    systemPrompt: el.systemPrompt.value.trim(),
+    outputLanguage: el.outputLanguage.value.trim()
+  };
+  await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
   el.settingsDialog.close();
   setStatus(`Backend: ${new URL(backendUrl).host}${state.settings.model ? ` · ${state.settings.model}` : ""}`);
+  // Re-fetch sections with new backend
+  await fetchSections();
+  // Restore selected section
+  if (state.activeSection) {
+    el.sectionSelect.value = state.activeSection.sectionKey;
+  }
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
@@ -407,6 +620,21 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
   if (changeInfo.status === "complete") refreshPageContext();
 });
 
-loadState().then(() => testBackend()).catch((error) => {
+// ===== Init =====
+async function init() {
+  await loadState();
+  await fetchSections();
+  // Restore active section in dropdown
+  if (state.activeSection) {
+    el.sectionSelect.value = state.activeSection.sectionKey;
+    // If section has persist, reload from DB
+    if (state.activeSection.persistHistory) {
+      await selectSection(state.activeSection.sectionKey);
+    }
+  }
+  await testBackend();
+}
+
+init().catch((error) => {
   setStatus(`Lỗi khởi tạo: ${error.message}`, true);
 });
