@@ -78,7 +78,7 @@ function buildSystemInstructions(customPrompt, outputLanguage) {
     parts.push(SYSTEM_INSTRUCTIONS);
   }
   if (outputLanguage && outputLanguage.trim()) {
-    parts.push(`Always respond in ${clean(outputLanguage, 100)}, regardless of the input language.`);
+    parts.push(`CRITICAL INSTRUCTION: You MUST respond ENTIRELY in ${clean(outputLanguage, 100)}. This overrides any language used in previous messages or in the user's question. Do NOT use any other language. Every single word of your response must be in ${clean(outputLanguage, 100)}.`);
   }
   return parts.join("\n\n");
 }
@@ -105,7 +105,7 @@ function buildResponsesInput(messages, context) {
   return parts.join("\n\n");
 }
 
-function buildChatMessages(messages, context, systemInstructions) {
+function buildChatMessages(messages, context, systemInstructions, outputLanguage) {
   const chat = [{ role: "system", content: systemInstructions || SYSTEM_INSTRUCTIONS }];
   const contextText = buildContextText(context);
   if (contextText) {
@@ -118,6 +118,12 @@ function buildChatMessages(messages, context, systemInstructions) {
     chat.push({
       role: message.role === "assistant" ? "assistant" : "user",
       content: clean(message.content, 12000)
+    });
+  }
+  if (outputLanguage && outputLanguage.trim()) {
+    chat.push({
+      role: "system",
+      content: `REMINDER: Respond ENTIRELY in ${clean(outputLanguage, 100)}. Ignore any other language used above.`
     });
   }
   return chat;
@@ -188,7 +194,7 @@ async function fetchWithTimeout(url, options, timeoutMs = 30000) {
   }
 }
 
-async function requestOpenAI({ model, messages, context, systemInstructions }) {
+async function requestOpenAI({ model, messages, context, systemInstructions, outputLanguage }) {
   const response = await fetch(`${AI_BASE_URL}/responses`, {
     method: "POST",
     headers: {
@@ -197,7 +203,7 @@ async function requestOpenAI({ model, messages, context, systemInstructions }) {
     },
     body: JSON.stringify({
       model,
-      instructions: systemInstructions || SYSTEM_INSTRUCTIONS,
+      instructions: (systemInstructions || SYSTEM_INSTRUCTIONS) + (outputLanguage && outputLanguage.trim() ? `\n\nRespond ENTIRELY in ${clean(outputLanguage, 100)}.` : ""),
       input: buildResponsesInput(messages, context)
     })
   });
@@ -205,7 +211,7 @@ async function requestOpenAI({ model, messages, context, systemInstructions }) {
   return { response, data, text: extractResponsesText(data) };
 }
 
-async function request9Router({ model, messages, context, systemInstructions }) {
+async function request9Router({ model, messages, context, systemInstructions, outputLanguage }) {
   const response = await fetchWithTimeout(`${AI_BASE_URL}/chat/completions`, {
     method: "POST",
     headers: {
@@ -214,7 +220,7 @@ async function request9Router({ model, messages, context, systemInstructions }) 
     },
     body: JSON.stringify({
       model,
-      messages: buildChatMessages(messages, context, systemInstructions)
+      messages: buildChatMessages(messages, context, systemInstructions, outputLanguage)
     })
   });
 
@@ -299,12 +305,13 @@ const server = http.createServer(async (req, res) => {
 
       const model = resolveModel(body.model);
       const systemInstructions = buildSystemInstructions(body.systemPrompt, body.outputLanguage);
+      log(`  systemInstructions (first 300): ${systemInstructions.slice(0, 300)}`);
       log(`  systemPrompt: ${body.systemPrompt ? "custom" : "default"}, outputLanguage: ${body.outputLanguage || "default"}`);
       log(`  resolved model: ${model}`);
       
       const result = AI_PROVIDER === "9router"
-        ? await request9Router({ model, messages, context: body.context || null, systemInstructions })
-        : await requestOpenAI({ model, messages, context: body.context || null, systemInstructions });
+        ? await request9Router({ model, messages, context: body.context || null, systemInstructions, outputLanguage: body.outputLanguage || "" })
+        : await requestOpenAI({ model, messages, context: body.context || null, systemInstructions, outputLanguage: body.outputLanguage || "" });
 
       log(`  response status: ${result.response.status}, text length: ${result.text?.length || 0}`);
       log(`  text preview: ${result.text?.slice(0, 200) || '(empty)'}`);
