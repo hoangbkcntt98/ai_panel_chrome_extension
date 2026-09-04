@@ -133,6 +133,7 @@ const el = {
   // Section management
   sectionSelect: document.querySelector("#sectionSelect"),
   newSectionButton: document.querySelector("#newSectionButton"),
+  deleteSectionButton: document.querySelector("#deleteSectionButton"),
   newSectionDialog: document.querySelector("#newSectionDialog"),
   newSectionTitle: document.querySelector("#newSectionTitle"),
   newSectionPersist: document.querySelector("#newSectionPersist"),
@@ -458,6 +459,8 @@ function renderSectionSelect() {
   }
 
   el.sectionSelect.value = state.activeSection?.sectionKey || prevValue || "";
+  el.deleteSectionButton.classList.toggle("hidden", !state.activeSection);
+  el.deleteSectionButton.disabled = !state.activeSection;
 }
 
 async function selectSection(sectionKey) {
@@ -468,6 +471,8 @@ async function selectSection(sectionKey) {
     state.activeSection = null;
     state.messages = [];
     el.resetHistoryButton.classList.add("hidden");
+    el.deleteSectionButton.classList.add("hidden");
+    el.deleteSectionButton.disabled = true;
     await chrome.storage.local.set({
       [STORAGE_KEYS.messages]: [],
       [STORAGE_KEYS.activeSection]: null
@@ -485,6 +490,8 @@ async function selectSection(sectionKey) {
     title: sec.title,
     persistHistory: sec.persist_history
   };
+  el.deleteSectionButton.classList.remove("hidden");
+  el.deleteSectionButton.disabled = false;
   await chrome.storage.local.set({ [STORAGE_KEYS.activeSection]: state.activeSection });
 
   // Load messages from DB if persist is on
@@ -569,8 +576,13 @@ async function createNewSection() {
 async function deleteCurrentSection() {
   if (!state.activeSection) return;
   const sectionKey = state.activeSection.sectionKey;
+  const title = state.activeSection.title;
+  if (!window.confirm(`Delete section "${title}"? This will also delete its saved chat history.`)) return;
   try {
-    await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}`, { method: "DELETE" });
+    el.deleteSectionButton.disabled = true;
+    const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     state.activeSection = null;
     state.messages = [];
     await chrome.storage.local.set({
@@ -579,9 +591,11 @@ async function deleteCurrentSection() {
     });
     await fetchSections();
     renderMessages();
-    setStatus("Section deleted");
+    setStatus(`Section "${title}" deleted`);
   } catch (err) {
     setStatus(`Delete error: ${err.message}`, true);
+  } finally {
+    el.deleteSectionButton.disabled = !state.activeSection;
   }
 }
 
@@ -1017,6 +1031,7 @@ el.clearChatButton.addEventListener("click", async () => {
 });
 
 el.sectionSelect.addEventListener("change", () => selectSection(el.sectionSelect.value));
+el.deleteSectionButton.addEventListener("click", deleteCurrentSection);
 
 el.newSectionButton.addEventListener("click", () => {
   el.newSectionTitle.value = "";
