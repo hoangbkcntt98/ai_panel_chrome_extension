@@ -452,7 +452,13 @@ const server = http.createServer(async (req, res) => {
       const messages = Array.isArray(body.messages) ? body.messages : [];
       
       log(`POST /chat - model: ${body.model || AI_MODEL}, messages: ${messages.length}`);
-      if (body.context?.url) log(`  context.url: ${body.context.url}`);
+      const requestContext = body.context && typeof body.context === "object" ? body.context : null;
+      log(`  context.source: ${requestContext?.source || "none"}`);
+      log(`  context.tabId: ${requestContext?.contextTabId || "none"}`);
+      log(`  context.title: ${clean(requestContext?.title, 200) || "(none)"}`);
+      log(`  context.url: ${clean(requestContext?.url, 500) || "(none)"}`);
+      log(`  context.selectionChars: ${String(requestContext?.selection || "").length}`);
+      log(`  context.pageTextChars: ${String(requestContext?.pageText || "").length}`);
       
       if (!messages.length) return sendJson(res, 400, { error: "Missing messages" });
 

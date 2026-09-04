@@ -960,9 +960,18 @@ async function refreshContextTab() {
       url: tab.url || context.url || "",
       context: normalizeSectionContext(context)
     };
+    console.info("[AI Sidekick] Context tab loaded", {
+      tabId: tab.id,
+      title: state.contextTab.title,
+      url: state.contextTab.url,
+      pageTextChars: state.contextTab.context.pageText.length
+    });
     await chrome.storage.local.set({ [STORAGE_KEYS.contextTab]: state.contextTab });
     renderContextTab();
   } catch {
+    console.warn("[AI Sidekick] Context tab could not be read", {
+      tabId: state.contextTab?.tabId || null
+    });
     state.contextTab = null;
     await chrome.storage.local.remove(STORAGE_KEYS.contextTab);
     renderContextTab();
@@ -993,6 +1002,12 @@ async function openTabContextDialog() {
             url: tab.url || context.url || "",
             context: normalizeSectionContext(context)
           };
+          console.info("[AI Sidekick] Context tab selected", {
+            tabId: tab.id,
+            title: state.contextTab.title,
+            url: state.contextTab.url,
+            pageTextChars: state.contextTab.context.pageText.length
+          });
           el.includeContext.checked = true;
           await chrome.storage.local.set({ [STORAGE_KEYS.contextTab]: state.contextTab });
           renderContextTab();
@@ -1046,6 +1061,10 @@ function buildContextPayload(force = false, selectionOnly = false) {
   const liveContext = state.context || {};
   const rememberedContext = state.sectionContext;
   const tabContext = state.contextTab?.context;
+  const usingSelectedTab = !selectionOnly && Boolean(tabContext);
+  const usingRememberedSection = !selectionOnly
+    && !usingSelectedTab
+    && Boolean(rememberedContext?.url && liveContext.url && rememberedContext.url !== liveContext.url);
   const context = selectionOnly
     ? liveContext
     : tabContext
@@ -1060,6 +1079,14 @@ function buildContextPayload(force = false, selectionOnly = false) {
     title: context.title || "",
     url: context.url || "",
     selection,
+    source: selectionOnly
+      ? "current-tab-selection"
+      : usingSelectedTab
+        ? "selected-tab"
+        : usingRememberedSection
+          ? "section-context"
+          : "current-tab",
+    contextTabId: usingSelectedTab ? state.contextTab?.tabId || null : null,
     // Summary text intentionally excludes the page body and sends only the
     // selected passage to the model.
     pageText: selectionOnly ? "" : (context.pageText || "")
@@ -1082,6 +1109,14 @@ async function askAssistant(text, forceContext = false, selectionOnly = false) {
     await refreshPageContext();
     await refreshContextTab();
     const contextPayload = buildContextPayload(forceContext, selectionOnly);
+    console.info("[AI Sidekick] Sending context", {
+      source: contextPayload?.source || "none",
+      contextTabId: contextPayload?.contextTabId || null,
+      title: contextPayload?.title || "",
+      url: contextPayload?.url || "",
+      selectionChars: contextPayload?.selection?.length || 0,
+      pageTextChars: contextPayload?.pageText?.length || 0
+    });
     if (selectionOnly && !contextPayload?.selection) {
       state.messages.pop();
       await saveMessages();
