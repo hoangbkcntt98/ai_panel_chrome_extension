@@ -34,6 +34,7 @@ const el = {
   selectionCard: document.querySelector("#selectionCard"),
   selectionText: document.querySelector("#selectionText"),
   clearSelectionButton: document.querySelector("#clearSelectionButton"),
+  readSelectionButton: document.querySelector("#readSelectionButton"),
   clearChatButton: document.querySelector("#clearChatButton"),
   settingsButton: document.querySelector("#settingsButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
@@ -664,6 +665,10 @@ document.querySelectorAll("[data-action]").forEach((button) => {
 el.clearSelectionButton.addEventListener("click", () => {
   state.selection = "";
   renderSelection();
+});
+
+el.readSelectionButton.addEventListener("click", () => {
+  if (state.selection) ttsSpeak(state.selection, el.readSelectionButton);
 });
 
 el.stopTtsButton.addEventListener("click", ttsStop);

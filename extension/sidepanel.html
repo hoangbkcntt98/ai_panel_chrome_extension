@@ -31,7 +31,10 @@
         <section id="selectionCard" class="selection-card hidden" aria-live="polite">
           <div class="selection-title-row">
             <span>Selected text</span>
-            <button id="clearSelectionButton" class="text-button">Clear</button>
+            <div class="selection-actions">
+              <button id="readSelectionButton" class="text-button" title="Read aloud">🔊</button>
+              <button id="clearSelectionButton" class="text-button">Clear</button>
+            </div>
           </div>
           <blockquote id="selectionText"></blockquote>
         </section>

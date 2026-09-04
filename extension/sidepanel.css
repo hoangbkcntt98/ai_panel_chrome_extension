@@ -171,3 +171,4 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .tts-button:hover { opacity: 1 !important; background: var(--surface-2); }
 .tts-button.speaking { opacity: 1 !important; color: var(--accent); }
 #stopTtsButton { color: var(--accent); font-weight: 700; }
+.selection-actions { display: flex; align-items: center; gap: 4px; }
