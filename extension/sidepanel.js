@@ -908,7 +908,10 @@ async function getTabContext(tab) {
   if (!tab?.id) throw new Error("No tab found");
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTEXT" });
-    if (response?.ok && response.context) return response.context;
+    if (response?.ok && response.context) {
+      console.log("[AI Sidekick] Tab pageText:", response.context.pageText || "");
+      return response.context;
+    }
   } catch {
     // Fall back to direct script execution for pages where the content script
     // was not injected (for example, a tab opened before the extension reload).
@@ -924,6 +927,7 @@ async function getTabContext(tab) {
     })
   });
   if (!result) throw new Error("Could not read current tab");
+  console.log("[AI Sidekick] Tab pageText (executeScript):", result.pageText || "");
   return result;
 }
 
