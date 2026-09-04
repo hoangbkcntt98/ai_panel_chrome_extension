@@ -879,15 +879,37 @@ async function loadState() {
   state.activeSection = stored[STORAGE_KEYS.activeSection] || null;
 }
 
+async function getCurrentTabContext() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (!tab?.id) throw new Error("No active tab found");
+
+  try {
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTEXT" });
+    if (response?.ok && response.context) return response.context;
+  } catch {
+    // Fall back to direct script execution for pages where the content script
+    // was not injected (for example, a tab opened before the extension reload).
+  }
+
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    func: () => ({
+      title: document.title || "",
+      url: location.href,
+      selection: window.getSelection()?.toString()?.trim() || "",
+      pageText: (document.body?.innerText || "").slice(0, 16000)
+    })
+  });
+  if (!result) throw new Error("Could not read current tab");
+  return result;
+}
+
 async function refreshPageContext() {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (!tab?.id) throw new Error("No active tab found");
-    const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTEXT" });
-    if (!response?.ok) throw new Error("Page does not support reading content");
-    state.context = normalizeSectionContext(response.context);
-    if (response.context?.selection) state.selection = response.context.selection;
-    el.pageLabel.textContent = response.context?.title || "Current page";
+    const context = await getCurrentTabContext();
+    state.context = normalizeSectionContext(context);
+    if (context?.selection) state.selection = context.selection;
+    el.pageLabel.textContent = context?.title || "Current page";
     renderSelection();
     const samePageAsSection = !state.sectionContext?.url
       || !state.context?.url
@@ -902,11 +924,11 @@ async function refreshPageContext() {
   }
 }
 
-function buildContextPayload(force = false) {
+function buildContextPayload(force = false, preferCurrentPage = false) {
   if (!force && !el.includeContext.checked) return null;
   const liveContext = state.context || {};
   const rememberedContext = state.sectionContext;
-  const context = rememberedContext?.url
+  const context = !preferCurrentPage && rememberedContext?.url
     && liveContext.url
     && rememberedContext.url !== liveContext.url
     ? rememberedContext
@@ -914,13 +936,17 @@ function buildContextPayload(force = false) {
   return {
     title: context.title || "",
     url: context.url || "",
-    selection: state.selection || context.selection || "",
+    // Summarize must never accidentally include a selection remembered from
+    // another tab/section; use only the live tab selection in that mode.
+    selection: preferCurrentPage
+      ? (context.selection || "")
+      : (state.selection || context.selection || ""),
     pageText: context.pageText || ""
   };
 }
 
 // ===== Chat =====
-async function askAssistant(text, forceContext = false) {
+async function askAssistant(text, forceContext = false, preferCurrentPage = false) {
   const content = (text || "").trim();
   if (!content || state.loading) return;
 
@@ -938,7 +964,7 @@ async function askAssistant(text, forceContext = false) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: state.messages.slice(-12),
-        context: buildContextPayload(forceContext),
+        context: buildContextPayload(forceContext, preferCurrentPage),
         model: state.settings.model || undefined,
         systemPrompt: state.settings.systemPrompt || undefined,
         outputLanguage: state.settings.outputLanguage || undefined
@@ -984,7 +1010,7 @@ function quickPrompt(action) {
       : "Translate and briefly explain the most important content of this page into Vietnamese.";
   }
   if (action === "summarize") {
-    return "Summarize the page provided in the context below. Provide: main points, key takeaways, and 3 bullet-point action items or notes if applicable. Base your summary ONLY on the page content, not on prior knowledge.";
+    return "Summarize the current browser tab using the page content in the context below. Provide the main points, key takeaways, and 3 bullet-point action items or notes if applicable. Base your summary ONLY on the current tab's page content, not on prior knowledge. Do not ask me to paste the page text or URL.";
   }
   return "";
 }
@@ -1063,7 +1089,11 @@ el.messageInput.addEventListener("input", () => {
 });
 
 document.querySelectorAll("[data-action]").forEach((button) => {
-  button.addEventListener("click", () => askAssistant(quickPrompt(button.dataset.action), true));
+  button.addEventListener("click", () => askAssistant(
+    quickPrompt(button.dataset.action),
+    true,
+    button.dataset.action === "summarize"
+  ));
 });
 
 el.clearSelectionButton.addEventListener("click", () => {
@@ -1214,7 +1244,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   const action = changes[STORAGE_KEYS.pendingAction]?.newValue;
   if (action?.action) {
     await refreshPageContext();
-    askAssistant(quickPrompt(action.action), true);
+    askAssistant(quickPrompt(action.action), true, action.action === "summarize");
     await chrome.storage.local.remove(STORAGE_KEYS.pendingAction);
   }
 });
@@ -1283,7 +1313,7 @@ document.addEventListener("keydown", (event) => {
   }
   if (comboMatchesEvent(sc.summarize, event)) {
     event.preventDefault();
-    askAssistant(quickPrompt("summarize"), true);
+    askAssistant(quickPrompt("summarize"), true, true);
     return;
   }
   if (comboMatchesEvent(sc.saveWord, event)) {
