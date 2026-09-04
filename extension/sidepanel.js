@@ -719,7 +719,7 @@ async function openWordsDialog() {
     if (w.translation) {
       const translation = document.createElement("div");
       translation.className = "word-item-translation";
-      translation.textContent = `Dịch: ${w.translation}`;
+      translation.textContent = w.translation;
       item.append(translation);
     }
 
