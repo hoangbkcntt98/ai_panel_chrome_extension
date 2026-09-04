@@ -36,13 +36,16 @@ button, textarea, input { font: inherit; }
 button { cursor: pointer; }
 
 .app-shell { min-height: 100vh; display: flex; flex-direction: column; }
-.topbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 14px 10px; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+.topbar { position: sticky; top: 0; z-index: 7; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 14px 10px; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--accent); color: white; font-size: 18px; box-shadow: var(--shadow); }
 .brand h1 { margin: 0; font-size: 15px; line-height: 1.2; }
 .brand p { margin: 3px 0 0; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
 .icon-button { border: 0; background: transparent; color: var(--muted); border-radius: 8px; width: 34px; height: 34px; display: grid; place-items: center; }
 .icon-button:hover { background: var(--surface); color: var(--text); }
+
+/* Sticky header block: section-bar + selection-card + quick-actions */
+.sticky-header { position: sticky; top: 0; z-index: 4; background: var(--bg); border-bottom: 1px solid var(--border); }
 
 .selection-card { margin: 12px 12px 0; padding: 12px; border: 1px solid var(--border); background: var(--surface-2); border-radius: 14px; }
 .selection-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
@@ -53,7 +56,7 @@ button { cursor: pointer; }
 .quick-actions button { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 10px; padding: 9px 7px; font-size: 12px; font-weight: 650; }
 .quick-actions button:hover { border-color: var(--accent); color: var(--accent); }
 
-.chat { flex: 1; padding: 4px 12px 160px; display: flex; flex-direction: column; gap: 10px; }
+.chat { flex: 1; padding: 10px 12px 160px; display: flex; flex-direction: column; gap: 10px; }
 .empty-state { margin: 42px auto; max-width: 280px; text-align: center; color: var(--muted); }
 .empty-state .sparkle { font-size: 30px; margin-bottom: 10px; }
 .empty-state h2 { margin: 0 0 8px; color: var(--text); font-size: 16px; }

@@ -17,31 +17,33 @@
           </div>
         </div>
         <button id="settingsButton" class="icon-button" title="Cài đặt" aria-label="Cài đặt">⚙</button>
-      </header>
+     </header>
 
-      <!-- Section management bar -->
-      <section class="section-bar">
-        <select id="sectionSelect" class="section-select" title="Chọn chủ đề học">
-          <option value="">— Chọn chủ đề —</option>
-        </select>
-        <button id="newSectionButton" class="icon-button section-add" title="Tạo chủ đề mới" aria-label="Tạo chủ đề mới">＋</button>
-      </section>
+     <!-- Sticky header block: section bar + selection card + quick actions -->
+     <div class="sticky-header">
+       <section class="section-bar">
+         <select id="sectionSelect" class="section-select" title="Chọn chủ đề học">
+           <option value="">— Chọn chủ đề —</option>
+         </select>
+         <button id="newSectionButton" class="icon-button section-add" title="Tạo chủ đề mới" aria-label="Tạo chủ đề mới">＋</button>
+       </section>
+ 
+       <section id="selectionCard" class="selection-card hidden" aria-live="polite">
+         <div class="selection-title-row">
+           <span>Đoạn đang chọn</span>
+           <button id="clearSelectionButton" class="text-button">Bỏ chọn</button>
+         </div>
+         <blockquote id="selectionText"></blockquote>
+       </section>
+ 
+       <section class="quick-actions" aria-label="Tác vụ nhanh">
+         <button data-action="explain">Giải thích</button>
+         <button data-action="translate">Dịch → VI</button>
+         <button data-action="summarize">Tóm tắt trang</button>
+       </section>
+     </div>
 
-      <section id="selectionCard" class="selection-card hidden" aria-live="polite">
-        <div class="selection-title-row">
-          <span>Đoạn đang chọn</span>
-          <button id="clearSelectionButton" class="text-button">Bỏ chọn</button>
-        </div>
-        <blockquote id="selectionText"></blockquote>
-      </section>
-
-      <section class="quick-actions" aria-label="Tác vụ nhanh">
-        <button data-action="explain">Giải thích</button>
-        <button data-action="translate">Dịch → VI</button>
-        <button data-action="summarize">Tóm tắt trang</button>
-      </section>
-
-      <section id="chat" class="chat" aria-live="polite"></section>
+     <section id="chat" class="chat" aria-live="polite"></section>
 
       <section class="composer-wrap">
         <div class="context-row">
