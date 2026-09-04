@@ -57,11 +57,17 @@
         <div class="context-row">
           <label class="toggle-label">
             <input id="includeContext" type="checkbox" checked />
-            <span>Use page content</span>
+            <span>Use context</span>
           </label>
+          <button id="addTabContextButton" class="text-button" title="Add a browser tab as AI context">＋ Add tab</button>
           <button id="stopTtsButton" class="text-button hidden">⏹ Stop reading</button>
           <button id="resetHistoryButton" class="text-button hidden">↺ Reset history</button>
           <button id="clearChatButton" class="text-button">Clear chat</button>
+        </div>
+        <div id="contextTabCard" class="context-tab-card hidden" aria-live="polite">
+          <span class="context-tab-title">AI context tab</span>
+          <span id="contextTabLabel" class="context-tab-label"></span>
+          <button id="removeContextTabButton" class="text-button" title="Remove tab context" aria-label="Remove tab context">✕</button>
         </div>
         <div class="composer">
           <textarea id="messageInput" rows="1" placeholder="Ask about this page…"></textarea>
@@ -70,6 +76,20 @@
         <p id="statusText" class="status-text">Backend: not checked</p>
       </section>
     </main>
+
+    <!-- Select a browser tab to use as AI context -->
+    <dialog id="tabContextDialog">
+      <form method="dialog" class="settings-card tab-context-card">
+        <div class="settings-header">
+          <div>
+            <h2>Add tab context</h2>
+            <p>Select a browser tab whose content should be sent to the AI.</p>
+          </div>
+          <button id="closeTabContextButton" class="icon-button" value="cancel" aria-label="Close">✕</button>
+        </div>
+        <div id="tabContextList" class="tab-context-list"></div>
+      </form>
+    </dialog>
 
     <!-- New Section Dialog -->
     <dialog id="newSectionDialog">

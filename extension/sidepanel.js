@@ -7,7 +7,8 @@ const STORAGE_KEYS = {
   activeSection: "activeSection",
   sectionContexts: "sectionContexts",
   pendingSaveWord: "pendingSaveWord",
-  pendingAction: "pendingAction"
+  pendingAction: "pendingAction",
+  contextTab: "contextTab"
 };
 
 const DEFAULT_SHORTCUTS = {
@@ -88,6 +89,7 @@ const state = {
   selection: "",
   selectionUrl: "",
   context: null,
+  contextTab: null,
   loading: false,
   settings: {
     backendUrl: DEFAULT_BACKEND_URL,
@@ -114,6 +116,13 @@ const el = {
   includeContext: document.querySelector("#includeContext"),
   statusText: document.querySelector("#statusText"),
   pageLabel: document.querySelector("#pageLabel"),
+  addTabContextButton: document.querySelector("#addTabContextButton"),
+  contextTabCard: document.querySelector("#contextTabCard"),
+  contextTabLabel: document.querySelector("#contextTabLabel"),
+  removeContextTabButton: document.querySelector("#removeContextTabButton"),
+  tabContextDialog: document.querySelector("#tabContextDialog"),
+  tabContextList: document.querySelector("#tabContextList"),
+  closeTabContextButton: document.querySelector("#closeTabContextButton"),
   selectionCard: document.querySelector("#selectionCard"),
   selectionText: document.querySelector("#selectionText"),
   clearSelectionButton: document.querySelector("#clearSelectionButton"),
@@ -871,6 +880,15 @@ async function loadState() {
   if (stored[STORAGE_KEYS.pendingSelection]) {
     await chrome.storage.local.remove(STORAGE_KEYS.pendingSelection);
   }
+  const savedContextTab = stored[STORAGE_KEYS.contextTab];
+  if (savedContextTab?.tabId && savedContextTab.context) {
+    state.contextTab = {
+      tabId: savedContextTab.tabId,
+      title: String(savedContextTab.title || "").slice(0, 500),
+      url: String(savedContextTab.url || "").slice(0, 1500),
+      context: normalizeSectionContext(savedContextTab.context)
+    };
+  }
 
   el.backendUrl.value = state.settings.backendUrl;
   el.modelId.value = state.settings.model;
@@ -880,14 +898,14 @@ async function loadState() {
 
   renderMessages();
   renderSelection();
+  renderContextTab();
   await refreshPageContext();
   state.activeSection = stored[STORAGE_KEYS.activeSection] || null;
+  await refreshContextTab();
 }
 
-async function getCurrentTabContext() {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab?.id) throw new Error("No active tab found");
-
+async function getTabContext(tab) {
+  if (!tab?.id) throw new Error("No tab found");
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTEXT" });
     if (response?.ok && response.context) return response.context;
@@ -907,6 +925,97 @@ async function getCurrentTabContext() {
   });
   if (!result) throw new Error("Could not read current tab");
   return result;
+}
+
+async function getCurrentTabContext() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  return getTabContext(tab);
+}
+
+function renderContextTab() {
+  const selected = state.contextTab;
+  const hasContext = Boolean(selected?.context);
+  el.contextTabCard?.classList.toggle("hidden", !hasContext);
+  if (el.contextTabLabel) {
+    el.contextTabLabel.textContent = hasContext
+      ? `${selected.title || selected.context.title || "Untitled tab"}${selected.url ? ` · ${selected.url}` : ""}`
+      : "";
+    el.contextTabLabel.title = selected?.url || "";
+  }
+  if (el.messageInput) {
+    el.messageInput.placeholder = hasContext
+      ? "Ask about the selected tab…"
+      : "Ask about this page…";
+  }
+}
+
+async function refreshContextTab() {
+  if (!state.contextTab?.tabId) return;
+  try {
+    const tab = await chrome.tabs.get(state.contextTab.tabId);
+    const context = await getTabContext(tab);
+    state.contextTab = {
+      tabId: tab.id,
+      title: tab.title || context.title || "",
+      url: tab.url || context.url || "",
+      context: normalizeSectionContext(context)
+    };
+    await chrome.storage.local.set({ [STORAGE_KEYS.contextTab]: state.contextTab });
+    renderContextTab();
+  } catch {
+    state.contextTab = null;
+    await chrome.storage.local.remove(STORAGE_KEYS.contextTab);
+    renderContextTab();
+  }
+}
+
+async function openTabContextDialog() {
+  if (!el.tabContextDialog || !el.tabContextList) return;
+  el.tabContextList.replaceChildren();
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "tab-context-option";
+      button.innerHTML = `<strong></strong><span></span>`;
+      button.querySelector("strong").textContent = tab.title || "Untitled tab";
+      button.querySelector("span").textContent = tab.url || "";
+      if (state.contextTab?.tabId === tab.id) button.classList.add("selected");
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        try {
+          const context = await getTabContext(tab);
+          state.contextTab = {
+            tabId: tab.id,
+            title: tab.title || context.title || "",
+            url: tab.url || context.url || "",
+            context: normalizeSectionContext(context)
+          };
+          el.includeContext.checked = true;
+          await chrome.storage.local.set({ [STORAGE_KEYS.contextTab]: state.contextTab });
+          renderContextTab();
+          el.tabContextDialog.close();
+          setStatus(`Context tab added: ${state.contextTab.title || "Untitled tab"}`);
+        } catch (error) {
+          setStatus(`Cannot read selected tab: ${error.message}`, true);
+        } finally {
+          button.disabled = false;
+        }
+      });
+      el.tabContextList.appendChild(button);
+    }
+    if (!tabs.length) {
+      const empty = document.createElement("p");
+      empty.className = "field-help";
+      empty.textContent = "No browser tabs available.";
+      el.tabContextList.appendChild(empty);
+    }
+    el.tabContextDialog.showModal();
+  } catch (error) {
+    setStatus(`Cannot list browser tabs: ${error.message}`, true);
+  }
 }
 
 async function refreshPageContext() {
@@ -936,11 +1045,15 @@ function buildContextPayload(force = false, selectionOnly = false) {
   if (!force && !el.includeContext.checked) return null;
   const liveContext = state.context || {};
   const rememberedContext = state.sectionContext;
-  const context = !selectionOnly && rememberedContext?.url
-    && liveContext.url
-    && rememberedContext.url !== liveContext.url
-    ? rememberedContext
-    : liveContext;
+  const tabContext = state.contextTab?.context;
+  const context = selectionOnly
+    ? liveContext
+    : tabContext
+      || (rememberedContext?.url
+        && liveContext.url
+        && rememberedContext.url !== liveContext.url
+        ? rememberedContext
+        : liveContext);
   const selection = context.selection
     || (state.selectionUrl && context.url && state.selectionUrl === context.url ? state.selection : "");
   return {
@@ -967,6 +1080,7 @@ async function askAssistant(text, forceContext = false, selectionOnly = false) {
 
   try {
     await refreshPageContext();
+    await refreshContextTab();
     const contextPayload = buildContextPayload(forceContext, selectionOnly);
     if (selectionOnly && !contextPayload?.selection) {
       state.messages.pop();
@@ -1117,6 +1231,15 @@ el.clearSelectionButton.addEventListener("click", () => {
   state.selectionUrl = "";
   renderSelection();
 });
+
+el.addTabContextButton?.addEventListener("click", openTabContextDialog);
+el.removeContextTabButton?.addEventListener("click", async () => {
+  state.contextTab = null;
+  await chrome.storage.local.remove(STORAGE_KEYS.contextTab);
+  renderContextTab();
+  setStatus("Tab context removed");
+});
+el.closeTabContextButton?.addEventListener("click", () => el.tabContextDialog.close());
 
 el.readSelectionButton.addEventListener("click", () => {
   if (state.selection) ttsSpeak(state.selection, el.readSelectionButton);
@@ -1276,6 +1399,17 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
 chrome.tabs.onActivated.addListener(() => refreshPageContext());
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
   if (changeInfo.status === "complete") refreshPageContext();
+});
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (tabId === state.contextTab?.tabId && changeInfo.status === "complete") {
+    refreshContextTab();
+  }
+});
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (tabId !== state.contextTab?.tabId) return;
+  state.contextTab = null;
+  chrome.storage.local.remove(STORAGE_KEYS.contextTab);
+  renderContextTab();
 });
 
 // Save word directly (used by context menu storage listener)

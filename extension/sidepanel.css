@@ -71,11 +71,15 @@ button { cursor: pointer; }
 @keyframes pulse { from { opacity: .25; } to { opacity: 1; } }
 
 .composer-wrap { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; padding: 8px 12px 12px; background: linear-gradient(to top, var(--bg) 78%, transparent); }
-.context-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 7px; }
+.context-row { display: flex; justify-content: flex-start; align-items: center; gap: 8px; margin-bottom: 7px; flex-wrap: wrap; }
 .toggle-label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; }
 .toggle-label input { accent-color: var(--accent); }
 .text-button { border: 0; background: transparent; color: var(--muted); font-size: 11px; padding: 3px 4px; }
 .text-button:hover { color: var(--accent); }
+.context-tab-card { display: flex; align-items: center; gap: 7px; margin: 0 0 7px; padding: 7px 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-2); min-width: 0; }
+.context-tab-title { flex: 0 0 auto; color: var(--accent); font-size: 10px; font-weight: 750; }
+.context-tab-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
+.context-tab-card .text-button { flex: 0 0 auto; padding: 1px 3px; }
 .composer { display: flex; align-items: flex-end; gap: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
 .composer:focus-within { border-color: var(--accent); }
 textarea { flex: 1; resize: none; max-height: 140px; min-height: 34px; border: 0; outline: 0; background: transparent; color: var(--text); line-height: 1.45; padding: 7px 5px; }
@@ -87,6 +91,8 @@ textarea { flex: 1; resize: none; max-height: 140px; min-height: 34px; border: 0
 
 #settingsDialog { width: min(360px, calc(100vw - 28px)); border: 0; padding: 0; border-radius: 16px; background: transparent; color: var(--text); }
 #settingsDialog::backdrop { background: rgba(16,24,40,.36); backdrop-filter: blur(3px); }
+#tabContextDialog { width: min(380px, calc(100vw - 28px)); border: 0; padding: 0; border-radius: 16px; background: transparent; color: var(--text); }
+#tabContextDialog::backdrop { background: rgba(16,24,40,.36); backdrop-filter: blur(3px); }
 .settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); }
 .settings-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .settings-header h2 { margin: 0; font-size: 16px; }
@@ -106,6 +112,12 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .provider-info { margin: -8px 0 14px; color: var(--muted); font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; }
 .field-textarea { resize: vertical; min-height: 80px; font-family: inherit; line-height: 1.5; }
 .field-select { cursor: pointer; }
+.tab-context-card { width: min(380px, calc(100vw - 28px)); max-height: min(75vh, 560px); overflow: hidden; display: flex; flex-direction: column; }
+.tab-context-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 52vh; }
+.tab-context-option { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; width: 100%; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg); color: var(--text); text-align: left; }
+.tab-context-option:hover, .tab-context-option.selected { border-color: var(--accent); background: var(--surface-2); }
+.tab-context-option strong { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.tab-context-option span { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 10px; }
 
 /* Markdown styles */
 .message-body { white-space: normal; }
