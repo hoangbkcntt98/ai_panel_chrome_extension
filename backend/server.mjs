@@ -154,7 +154,7 @@ async function readJson(req) {
   const chunks = [];
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY_BYTES) throw new Error("Request qua lon");
+    if (size > MAX_BODY_BYTES) throw new Error("Request too large");
     chunks.push(chunk);
   }
   const raw = Buffer.concat(chunks).toString("utf8");
@@ -279,7 +279,7 @@ function extractSSEText(rawText) {
 function resolveModel(requestedModel) {
   const requested = clean(requestedModel, 300);
   const model = requested || AI_MODEL;
-  if (!model) throw new Error("Chua cau hinh AI_MODEL");
+  if (!model) throw new Error("AI_MODEL not configured");
   if (ALLOWED_MODELS.size && !ALLOWED_MODELS.has(model)) {
     throw new Error(`Model '${model}' khong nam trong ALLOWED_MODELS`);
   }
@@ -374,7 +374,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "GET" && url.pathname === "/models") {
-    if (!AI_API_KEY) return sendJson(res, 503, { error: "Backend chua co AI_API_KEY" });
+    if (!AI_API_KEY) return sendJson(res, 503, { error: "Backend has no AI_API_KEY" });
     try {
       if (AI_PROVIDER === "9router") {
         const models = await list9RouterModels();
@@ -386,14 +386,14 @@ const server = http.createServer(async (req, res) => {
         defaultModel: AI_MODEL || null
       });
     } catch (error) {
-      return sendJson(res, 502, { error: error.message || "Khong lay duoc danh sach model" });
+      return sendJson(res, 502, { error: error.message || "Cannot retrieve model list" });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/chat") {
     if (!AI_API_KEY) {
       return sendJson(res, 503, {
-        error: "Backend chua co AI_API_KEY. Hay cau hinh file .env roi khoi dong lai server."
+        error: "Backend has no AI_API_KEY. Configure the .env file and restart the server."
       });
     }
 
@@ -404,7 +404,7 @@ const server = http.createServer(async (req, res) => {
       log(`POST /chat - model: ${body.model || AI_MODEL}, messages: ${messages.length}`);
       if (body.context?.url) log(`  context.url: ${body.context.url}`);
       
-      if (!messages.length) return sendJson(res, 400, { error: "Thieu messages" });
+      if (!messages.length) return sendJson(res, 400, { error: "Missing messages" });
 
       const model = resolveModel(body.model);
       const systemInstructions = buildSystemInstructions(body.systemPrompt, body.outputLanguage);
@@ -426,13 +426,13 @@ const server = http.createServer(async (req, res) => {
       }
       if (!result.text) {
         log(`  ERROR: Model did not return text`);
-        return sendJson(res, 502, { error: "Model khong tra ve text" });
+        return sendJson(res, 502, { error: "Model returned no text" });
       }
 
       return sendJson(res, 200, { text: result.text, provider: AI_PROVIDER, model });
     } catch (error) {
       log(`  EXCEPTION: ${error.message}\n${error.stack}`);
-      return sendJson(res, 500, { error: error.message || "Loi backend" });
+      return sendJson(res, 500, { error: error.message || "Backend error" });
     }
   }
 
@@ -454,7 +454,7 @@ const server = http.createServer(async (req, res) => {
       const sectionKey = clean(body.sectionKey, 200);
       const title = clean(body.title, 500);
       const persistHistory = Boolean(body.persistHistory);
-      if (!sectionKey || !title) return sendJson(res, 400, { error: "Thieu sectionKey hoac title" });
+      if (!sectionKey || !title) return sendJson(res, 400, { error: "Missing sectionKey or title" });
       const section = await createSection(sectionKey, title, persistHistory);
       log(`Created/updated section: ${sectionKey} (persist=${persistHistory})`);
       return sendJson(res, 200, { section });
@@ -467,7 +467,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "DELETE" && url.pathname.startsWith("/api/sections/")) {
     try {
       const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", ""));
-      if (!sectionKey) return sendJson(res, 400, { error: "Thieu sectionKey" });
+      if (!sectionKey) return sendJson(res, 400, { error: "Missing sectionKey" });
       await deleteSection(sectionKey);
       log(`Deleted section: ${sectionKey}`);
       return sendJson(res, 200, { ok: true });
@@ -483,7 +483,7 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const title = clean(body.title, 500);
       const persistHistory = Boolean(body.persistHistory);
-      if (!sectionKey || !title) return sendJson(res, 400, { error: "Thieu sectionKey hoac title" });
+      if (!sectionKey || !title) return sendJson(res, 400, { error: "Missing sectionKey or title" });
       const section = await updateSection(sectionKey, title, persistHistory);
       return sendJson(res, 200, { section });
     } catch (error) {
@@ -495,7 +495,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && url.pathname.startsWith("/api/sections/") && url.pathname.endsWith("/messages")) {
     try {
       const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", "").replace("/messages", ""));
-      if (!sectionKey) return sendJson(res, 400, { error: "Thieu sectionKey" });
+      if (!sectionKey) return sendJson(res, 400, { error: "Missing sectionKey" });
       const messages = await loadMessagesFromDb(sectionKey);
       return sendJson(res, 200, { messages });
     } catch (error) {
@@ -509,7 +509,7 @@ const server = http.createServer(async (req, res) => {
       const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", "").replace("/messages", ""));
       const body = await readJson(req);
       const messages = Array.isArray(body.messages) ? body.messages : [];
-      if (!sectionKey) return sendJson(res, 400, { error: "Thieu sectionKey" });
+      if (!sectionKey) return sendJson(res, 400, { error: "Missing sectionKey" });
       await saveMessagesToDb(sectionKey, messages);
       log(`Saved ${messages.length} messages for section: ${sectionKey}`);
       return sendJson(res, 200, { ok: true });

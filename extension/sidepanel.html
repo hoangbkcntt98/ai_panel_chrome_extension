@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,51 +13,51 @@
           <div class="brand-mark" aria-hidden="true">✦</div>
           <div>
             <h1>AI Sidekick</h1>
-            <p id="pageLabel">Sẵn sàng hỗ trợ</p>
+            <p id="pageLabel">Ready to help</p>
           </div>
         </div>
-        <button id="settingsButton" class="icon-button" title="Cài đặt" aria-label="Cài đặt">⚙</button>
-     </header>
+        <button id="settingsButton" class="icon-button" title="Settings" aria-label="Settings">⚙</button>
+      </header>
 
-     <!-- Sticky header block: section bar + selection card + quick actions -->
-     <div class="sticky-header">
-       <section class="section-bar">
-         <select id="sectionSelect" class="section-select" title="Chọn chủ đề học">
-           <option value="">— Chọn chủ đề —</option>
-         </select>
-         <button id="newSectionButton" class="icon-button section-add" title="Tạo chủ đề mới" aria-label="Tạo chủ đề mới">＋</button>
-       </section>
- 
-       <section id="selectionCard" class="selection-card hidden" aria-live="polite">
-         <div class="selection-title-row">
-           <span>Đoạn đang chọn</span>
-           <button id="clearSelectionButton" class="text-button">Bỏ chọn</button>
-         </div>
-         <blockquote id="selectionText"></blockquote>
-       </section>
- 
-       <section class="quick-actions" aria-label="Tác vụ nhanh">
-         <button data-action="explain">Giải thích</button>
-         <button data-action="translate">Dịch → VI</button>
-         <button data-action="summarize">Tóm tắt trang</button>
-       </section>
-     </div>
+      <!-- Sticky header block: section bar + selection card + quick actions -->
+      <div class="sticky-header">
+        <section class="section-bar">
+          <select id="sectionSelect" class="section-select" title="Select a study section">
+            <option value="">— Select a section —</option>
+          </select>
+          <button id="newSectionButton" class="icon-button section-add" title="New section" aria-label="New section">＋</button>
+        </section>
 
-     <section id="chat" class="chat" aria-live="polite"></section>
+        <section id="selectionCard" class="selection-card hidden" aria-live="polite">
+          <div class="selection-title-row">
+            <span>Selected text</span>
+            <button id="clearSelectionButton" class="text-button">Clear</button>
+          </div>
+          <blockquote id="selectionText"></blockquote>
+        </section>
+
+        <section class="quick-actions" aria-label="Quick actions">
+          <button data-action="explain">Explain</button>
+          <button data-action="translate">Translate → VI</button>
+          <button data-action="summarize">Summarize page</button>
+        </section>
+      </div>
+
+      <section id="chat" class="chat" aria-live="polite"></section>
 
       <section class="composer-wrap">
         <div class="context-row">
           <label class="toggle-label">
             <input id="includeContext" type="checkbox" checked />
-            <span>Dùng nội dung trang</span>
+            <span>Use page content</span>
           </label>
-          <button id="clearChatButton" class="text-button">Xóa chat</button>
+          <button id="clearChatButton" class="text-button">Clear chat</button>
         </div>
         <div class="composer">
-          <textarea id="messageInput" rows="1" placeholder="Hỏi về trang này…"></textarea>
-          <button id="sendButton" class="send-button" aria-label="Gửi">➤</button>
+          <textarea id="messageInput" rows="1" placeholder="Ask about this page…"></textarea>
+          <button id="sendButton" class="send-button" aria-label="Send">➤</button>
         </div>
-        <p id="statusText" class="status-text">Backend: chưa kiểm tra</p>
+        <p id="statusText" class="status-text">Backend: not checked</p>
       </section>
     </main>
 
@@ -66,25 +66,25 @@
       <form method="dialog" class="settings-card">
         <div class="settings-header">
           <div>
-            <h2>Tạo chủ đề mới</h2>
-            <p>Tạo section riêng cho từng chủ đề học tập.</p>
+            <h2>New section</h2>
+            <p>Create a separate section for each study topic.</p>
           </div>
-          <button class="icon-button" value="cancel" aria-label="Đóng">✕</button>
+          <button class="icon-button" value="cancel" aria-label="Close">✕</button>
         </div>
 
-        <label class="field-label" for="newSectionTitle">Tên chủ đề</label>
-        <input id="newSectionTitle" class="field-input" type="text" placeholder="vd: Học Claude" autocomplete="off" />
-        <p class="field-help">Tên hiển thị cho chủ đề học tập.</p>
+        <label class="field-label" for="newSectionTitle">Section name</label>
+        <input id="newSectionTitle" class="field-input" type="text" placeholder="e.g. Learning Claude" autocomplete="off" />
+        <p class="field-help">Display name for this study section.</p>
 
         <label class="toggle-label section-toggle">
           <input id="newSectionPersist" type="checkbox" />
-          <span>Lưu lại lịch sử chat</span>
+          <span>Save chat history</span>
         </label>
-        <p class="field-help">Nếu tích, lịch sử chat sẽ được lưu trên server và hiện lại khi mở chủ đề này.</p>
+        <p class="field-help">If checked, chat history will be saved on the server and restored when you open this section.</p>
 
         <div class="settings-actions">
-          <button id="cancelNewSectionButton" type="button" class="secondary-button">Hủy</button>
-          <button id="createSectionButton" type="button" class="primary-button">Tạo</button>
+          <button id="cancelNewSectionButton" type="button" class="secondary-button">Cancel</button>
+          <button id="createSectionButton" type="button" class="primary-button">Create</button>
         </div>
         <p id="newSectionStatus" class="status-text"></p>
       </form>
@@ -95,32 +95,32 @@
       <form method="dialog" class="settings-card">
         <div class="settings-header">
           <div>
-            <h2>Cài đặt</h2>
-            <p>Extension chỉ gửi dữ liệu đến backend bạn cấu hình.</p>
+            <h2>Settings</h2>
+            <p>The extension only sends data to the backend you configure.</p>
           </div>
-          <button class="icon-button" value="cancel" aria-label="Đóng">✕</button>
+          <button class="icon-button" value="cancel" aria-label="Close">✕</button>
         </div>
 
         <label class="field-label" for="backendUrl">Backend URL</label>
         <input id="backendUrl" class="field-input" type="url" placeholder="http://localhost:8787" />
-        <p class="field-help">Mặc định: <code>http://localhost:8787</code></p>
+        <p class="field-help">Default: <code>http://localhost:8787</code></p>
 
         <label class="field-label" for="modelId">Model ID</label>
         <div class="model-row">
-          <input id="modelId" class="field-input" type="text" list="modelOptions" placeholder="vd: if/glm-4.7" autocomplete="off" />
+          <input id="modelId" class="field-input" type="text" list="modelOptions" placeholder="e.g. if/glm-4.7" autocomplete="off" />
           <datalist id="modelOptions"></datalist>
           <button id="refreshModelsButton" type="button" class="secondary-button compact-button">↻</button>
         </div>
-        <p class="field-help">Với 9Router, bấm ↻ để lấy model từ <code>/v1/models</code>, hoặc nhập Model ID thủ công.</p>
+        <p class="field-help">With 9Router, click ↻ to fetch models from <code>/v1/models</code>, or enter a Model ID manually.</p>
         <p id="providerInfo" class="provider-info"></p>
 
         <label class="field-label" for="systemPrompt">System Prompt</label>
-        <textarea id="systemPrompt" class="field-input field-textarea" rows="4" placeholder="Để trống để dùng mặc định của backend"></textarea>
-        <p class="field-help">Hướng dẫn AI cách trả lời. Để trống nếu dùng mặc định.</p>
+        <textarea id="systemPrompt" class="field-input field-textarea" rows="4" placeholder="Leave empty to use backend default"></textarea>
+        <p class="field-help">Instruct the AI how to respond. Leave empty for default.</p>
 
-        <label class="field-label" for="outputLanguage">Ngôn ngữ phản hồi</label>
+        <label class="field-label" for="outputLanguage">Response language</label>
         <select id="outputLanguage" class="field-input field-select">
-          <option value="">Tự động (mặc định)</option>
+          <option value="">Auto (default)</option>
           <option value="Tiếng Việt">Tiếng Việt</option>
           <option value="English">English</option>
           <option value="日本語">日本語</option>
@@ -131,11 +131,11 @@
           <option value="Español">Español</option>
           <option value="Русский">Русский</option>
         </select>
-        <p class="field-help">Ép AI luôn phản hồi bằng ngôn ngữ đã chọn.</p>
+        <p class="field-help">Force the AI to always respond in the selected language.</p>
 
         <div class="settings-actions">
-          <button id="testBackendButton" type="button" class="secondary-button">Kiểm tra kết nối</button>
-          <button id="saveSettingsButton" type="button" class="primary-button">Lưu</button>
+          <button id="testBackendButton" type="button" class="secondary-button">Test connection</button>
+          <button id="saveSettingsButton" type="button" class="primary-button">Save</button>
         </div>
         <p id="settingsStatus" class="status-text"></p>
       </form>

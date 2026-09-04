@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "AI Study Sidekick",
-  "version": "1.1.0",
-  "description": "Trợ lý AI trong Chrome Side Panel với hỗ trợ 9Router: hỏi về trang đang mở, giải thích và dịch đoạn văn được chọn.",
+  "version": "1.2.0",
+  "description": "AI assistant in Chrome Side Panel with 9Router support: ask about the current page, explain and translate selected text.",
   "minimum_chrome_version": "116",
   "permissions": [
     "sidePanel",
@@ -19,7 +19,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Mở AI Study Sidekick"
+    "default_title": "Open AI Study Sidekick"
   },
   "side_panel": {
     "default_path": "sidepanel.html"

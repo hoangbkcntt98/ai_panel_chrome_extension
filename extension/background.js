@@ -2,13 +2,13 @@ const MENU_ID = "ai-study-sidekick-selection";
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch((error) => console.warn("Không thể cấu hình side panel:", error));
+  .catch((error) => console.warn("Could not configure side panel:", error));
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
       id: MENU_ID,
-      title: "Hỏi AI về đoạn đã chọn",
+      title: "Ask AI about selected text",
       contexts: ["selection"]
     });
   });
@@ -33,7 +33,7 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     try {
       await chrome.sidePanel.open({ windowId: tab.windowId });
     } catch (error) {
-      console.warn("Không thể mở side panel:", error);
+      console.warn("Could not open side panel:", error);
     }
   }
 });

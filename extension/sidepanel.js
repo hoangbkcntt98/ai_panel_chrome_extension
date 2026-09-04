@@ -80,7 +80,7 @@ function slugify(text) {
     .slice(0, 100);
 }
 
-// ===== Markdown parser (unchanged) =====
+// ===== Markdown parser =====
 function parseMarkdown(text) {
   if (!text) return "";
   let html = text
@@ -117,13 +117,13 @@ function showEmptyState() {
     wrapper.innerHTML = `
       <div class="sparkle">✦</div>
       <h2>${state.activeSection.title}</h2>
-      <p>Đặt câu hỏi hoặc bôi đen đoạn văn trên trang rồi chọn "Giải thích".</p>
+      <p>Ask a question or highlight text on the page, then click "Explain".</p>
     `;
   } else {
     wrapper.innerHTML = `
       <div class="sparkle">✦</div>
-      <h2>Chọn chủ đề học</h2>
-      <p>Tạo chủ đề mới (＋) hoặc chọn từ danh sách để bắt đầu. Bôi đen đoạn văn rồi hỏi AI.</p>
+      <h2>Select a section</h2>
+      <p>Create a new section (＋) or pick from the list to start. Highlight text and ask the AI.</p>
     `;
   }
   el.chat.appendChild(wrapper);
@@ -138,7 +138,7 @@ function renderMessages() {
   for (const message of state.messages) {
     const node = el.messageTemplate.content.firstElementChild.cloneNode(true);
     node.classList.add(message.role);
-    node.querySelector(".message-role").textContent = message.role === "user" ? "Bạn" : "AI";
+    node.querySelector(".message-role").textContent = message.role === "user" ? "You" : "AI";
     node.querySelector(".message-body").innerHTML = parseMarkdown(message.content);
     el.chat.appendChild(node);
   }
@@ -146,7 +146,7 @@ function renderMessages() {
     const loading = el.messageTemplate.content.firstElementChild.cloneNode(true);
     loading.classList.add("assistant", "loading");
     loading.querySelector(".message-role").textContent = "AI";
-    loading.querySelector(".message-body").textContent = "Đang suy nghĩ";
+    loading.querySelector(".message-body").textContent = "Thinking";
     el.chat.appendChild(loading);
   }
   requestAnimationFrame(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" }));
@@ -180,7 +180,7 @@ function renderSectionSelect() {
   el.sectionSelect.replaceChildren();
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = "— Chọn chủ đề —";
+  placeholder.textContent = "— Select a section —";
   el.sectionSelect.appendChild(placeholder);
 
   for (const sec of state.sections) {
@@ -223,23 +223,21 @@ async function selectSection(sectionKey) {
 
   // Load messages from DB if persist is on
   if (sec.persist_history) {
-    setStatus("Đang tải lịch sử chat…");
+    setStatus("Loading chat history…");
     try {
       const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}/messages`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       state.messages = Array.isArray(data.messages) ? data.messages : [];
-      // Also save to local storage for quick render
       await chrome.storage.local.set({ [STORAGE_KEYS.messages]: state.messages });
     } catch (err) {
-      setStatus(`Không tải được lịch sử: ${err.message}`, true);
+      setStatus(`Failed to load history: ${err.message}`, true);
       state.messages = [];
     }
     renderMessages();
     const count = state.messages.length;
-    setStatus(count ? `Đã tải ${count} tin nhắn` : "Chủ đề chưa có lịch sử chat");
+    setStatus(count ? `Loaded ${count} messages` : "No chat history for this section");
   } else {
-    // Load from local storage
     const stored = await chrome.storage.local.get(STORAGE_KEYS.messages);
     state.messages = Array.isArray(stored[STORAGE_KEYS.messages]) ? stored[STORAGE_KEYS.messages] : [];
     renderMessages();
@@ -265,14 +263,14 @@ async function createNewSection() {
   const title = el.newSectionTitle.value.trim();
   const persistHistory = el.newSectionPersist.checked;
   if (!title) {
-    el.newSectionStatus.textContent = "Vui lòng nhập tên chủ đề";
+    el.newSectionStatus.textContent = "Please enter a section name";
     el.newSectionStatus.classList.add("error");
     return;
   }
 
   const sectionKey = slugify(title) || `section-${Date.now()}`;
   el.createSectionButton.disabled = true;
-  el.newSectionStatus.textContent = "Đang tạo…";
+  el.newSectionStatus.textContent = "Creating…";
   el.newSectionStatus.classList.remove("error");
 
   try {
@@ -293,7 +291,7 @@ async function createNewSection() {
     await selectSection(sectionKey);
     el.sectionSelect.value = sectionKey;
   } catch (err) {
-    el.newSectionStatus.textContent = `Lỗi: ${err.message}`;
+    el.newSectionStatus.textContent = `Error: ${err.message}`;
     el.newSectionStatus.classList.add("error");
   } finally {
     el.createSectionButton.disabled = false;
@@ -313,16 +311,15 @@ async function deleteCurrentSection() {
     });
     await fetchSections();
     renderMessages();
-    setStatus("Đã xóa chủ đề");
+    setStatus("Section deleted");
   } catch (err) {
-    setStatus(`Lỗi xóa: ${err.message}`, true);
+    setStatus(`Delete error: ${err.message}`, true);
   }
 }
 
 // ===== Message persistence =====
 async function saveMessages() {
   await chrome.storage.local.set({ [STORAGE_KEYS.messages]: state.messages.slice(-40) });
-  // If section has persist, also save to DB
   if (state.activeSection?.persistHistory) {
     await persistCurrentSection();
   }
@@ -350,7 +347,6 @@ async function loadState() {
   el.systemPrompt.value = state.settings.systemPrompt;
   el.outputLanguage.value = state.settings.outputLanguage;
 
-  // Restore active section
   state.activeSection = stored[STORAGE_KEYS.activeSection] || null;
 
   renderMessages();
@@ -361,16 +357,16 @@ async function loadState() {
 async function refreshPageContext() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (!tab?.id) throw new Error("Không tìm thấy tab đang mở");
+    if (!tab?.id) throw new Error("No active tab found");
     const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTEXT" });
-    if (!response?.ok) throw new Error("Trang không hỗ trợ đọc nội dung");
+    if (!response?.ok) throw new Error("Page does not support reading content");
     state.context = response.context;
     if (response.context.selection) state.selection = response.context.selection;
-    el.pageLabel.textContent = response.context.title || "Trang hiện tại";
+    el.pageLabel.textContent = response.context.title || "Current page";
     renderSelection();
   } catch {
     state.context = null;
-    el.pageLabel.textContent = "Trang này không cho phép đọc nội dung";
+    el.pageLabel.textContent = "This page does not allow reading content";
   }
 }
 
@@ -395,7 +391,7 @@ async function askAssistant(text) {
   state.messages.push({ role: "user", content });
   await saveMessages();
   renderMessages();
-  setStatus("Đang gửi tới backend…");
+  setStatus("Sending to backend…");
 
   try {
     await refreshPageContext();
@@ -412,8 +408,8 @@ async function askAssistant(text) {
     });
 
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `Backend trả về HTTP ${response.status}`);
-    if (!data.text) throw new Error("Backend không trả về nội dung");
+    if (!response.ok) throw new Error(data.error || `Backend returned HTTP ${response.status}`);
+    if (!data.text) throw new Error("Backend returned no content");
 
     state.messages.push({ role: "assistant", content: data.text });
     if (data.model && !state.settings.model) {
@@ -422,14 +418,14 @@ async function askAssistant(text) {
     }
     await saveMessages();
     const modelLabel = data.model ? ` · ${data.model}` : "";
-    setStatus(`Đã trả lời · ${data.provider || "AI"}${modelLabel}`);
+    setStatus(`Answered · ${data.provider || "AI"}${modelLabel}`);
   } catch (error) {
     state.messages.push({
       role: "assistant",
-      content: `Không thể kết nối trợ lý. ${error.message}\n\nHãy mở ⚙ và kiểm tra Backend URL / API key.`
+      content: `Cannot connect to assistant. ${error.message}\n\nOpen ⚙ and check Backend URL / API key.`
     });
     await saveMessages();
-    setStatus("Có lỗi khi gọi backend", true);
+    setStatus("Error calling backend", true);
   } finally {
     state.loading = false;
     el.sendButton.disabled = false;
@@ -441,16 +437,16 @@ function quickPrompt(action) {
   const selected = state.selection?.trim();
   if (action === "explain") {
     return selected
-      ? `Giải thích đoạn sau thật dễ hiểu, nêu ý chính và ví dụ nếu hữu ích:\n\n${selected}`
-      : "Giải thích nội dung chính của trang này thật dễ hiểu, tập trung vào các khái niệm quan trọng.";
+      ? `Explain the following passage in an easy-to-understand way, highlighting key points and examples if useful:\n\n${selected}`
+      : "Explain the main content of this page in an easy-to-understand way, focusing on key concepts.";
   }
   if (action === "translate") {
     return selected
-      ? `Dịch đoạn sau sang tiếng Việt tự nhiên, giữ đúng nghĩa và giải thích nhanh các thuật ngữ khó nếu có:\n\n${selected}`
-      : "Hãy dịch và diễn giải ngắn gọn phần nội dung quan trọng nhất của trang này sang tiếng Việt.";
+      ? `Translate the following passage into Vietnamese naturally, preserving the meaning and briefly explaining difficult terms if any:\n\n${selected}`
+      : "Translate and briefly explain the most important content of this page into Vietnamese.";
   }
   if (action === "summarize") {
-    return "Tóm tắt trang này bằng tiếng Việt: ý chính, các điểm cần nhớ và 3 gạch đầu dòng hành động/ghi nhớ nếu phù hợp.";
+    return "Summarize this page: main points, key takeaways, and 3 bullet-point action items or notes if applicable.";
   }
   return "";
 }
@@ -468,7 +464,7 @@ function renderModelOptions(models = []) {
 async function refreshModels() {
   const url = normalizeBackendUrl(el.backendUrl.value);
   el.refreshModelsButton.disabled = true;
-  el.settingsStatus.textContent = "Đang tải danh sách model…";
+  el.settingsStatus.textContent = "Loading model list…";
   el.settingsStatus.classList.remove("error");
   try {
     const response = await fetch(`${url}/models`);
@@ -478,10 +474,10 @@ async function refreshModels() {
     renderModelOptions(models);
     if (!el.modelId.value && data.defaultModel) el.modelId.value = data.defaultModel;
     el.settingsStatus.textContent = models.length
-      ? `Đã tải ${models.length} model từ ${data.provider || "backend"}`
-      : "Backend chưa trả về danh sách model; bạn vẫn có thể nhập Model ID thủ công.";
+      ? `Loaded ${models.length} models from ${data.provider || "backend"}`
+      : "Backend returned no models; you can still enter a Model ID manually.";
   } catch (error) {
-    el.settingsStatus.textContent = `Không lấy được model: ${error.message}`;
+    el.settingsStatus.textContent = `Failed to load models: ${error.message}`;
     el.settingsStatus.classList.add("error");
   } finally {
     el.refreshModelsButton.disabled = false;
@@ -490,20 +486,20 @@ async function refreshModels() {
 
 async function testBackend() {
   const url = normalizeBackendUrl(el.backendUrl.value);
-  el.settingsStatus.textContent = "Đang kiểm tra…";
+  el.settingsStatus.textContent = "Testing…";
   el.settingsStatus.classList.remove("error");
   try {
     const response = await fetch(`${url}/health`);
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.ok) throw new Error("Backend chưa sẵn sàng");
+    if (!response.ok || !data.ok) throw new Error("Backend not ready");
     state.backendInfo = data;
-    el.providerInfo.textContent = `Provider: ${data.provider || "không rõ"} · Base: ${data.baseUrl || "-"}`;
+    el.providerInfo.textContent = `Provider: ${data.provider || "unknown"} · Base: ${data.baseUrl || "-"}`;
     if (!el.modelId.value && data.model) el.modelId.value = data.model;
-    el.settingsStatus.textContent = `Kết nối OK · ${data.provider || "AI"} · model: ${data.model || "chưa chọn"}`;
+    el.settingsStatus.textContent = `Connected · ${data.provider || "AI"} · model: ${data.model || "not set"}`;
     if (data.supportsModelList) await refreshModels();
   } catch (error) {
     el.providerInfo.textContent = "";
-    el.settingsStatus.textContent = `Không kết nối được: ${error.message}`;
+    el.settingsStatus.textContent = `Connection failed: ${error.message}`;
     el.settingsStatus.classList.add("error");
   }
 }
@@ -541,7 +537,7 @@ el.clearChatButton.addEventListener("click", async () => {
   state.messages = [];
   await saveMessages();
   renderMessages();
-  setStatus("Đã xóa lịch sử chat");
+  setStatus("Chat history cleared");
 });
 
 el.sectionSelect.addEventListener("change", () => selectSection(el.sectionSelect.value));
@@ -571,7 +567,7 @@ el.settingsButton.addEventListener("click", () => {
   el.systemPrompt.value = state.settings.systemPrompt;
   el.outputLanguage.value = state.settings.outputLanguage;
   el.providerInfo.textContent = state.backendInfo
-    ? `Provider: ${state.backendInfo.provider || "không rõ"} · Base: ${state.backendInfo.baseUrl || "-"}`
+    ? `Provider: ${state.backendInfo.provider || "unknown"} · Base: ${state.backendInfo.baseUrl || "-"}`
     : "";
   el.settingsStatus.textContent = "";
   el.settingsDialog.showModal();
@@ -585,7 +581,7 @@ el.saveSettingsButton.addEventListener("click", async () => {
   try {
     new URL(backendUrl);
   } catch {
-    el.settingsStatus.textContent = "Backend URL không hợp lệ";
+    el.settingsStatus.textContent = "Invalid Backend URL";
     el.settingsStatus.classList.add("error");
     return;
   }
@@ -598,9 +594,7 @@ el.saveSettingsButton.addEventListener("click", async () => {
   await chrome.storage.local.set({ [STORAGE_KEYS.settings]: state.settings });
   el.settingsDialog.close();
   setStatus(`Backend: ${new URL(backendUrl).host}${state.settings.model ? ` · ${state.settings.model}` : ""}`);
-  // Re-fetch sections with new backend
   await fetchSections();
-  // Restore selected section
   if (state.activeSection) {
     el.sectionSelect.value = state.activeSection.sectionKey;
   }
@@ -624,10 +618,8 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
 async function init() {
   await loadState();
   await fetchSections();
-  // Restore active section in dropdown
   if (state.activeSection) {
     el.sectionSelect.value = state.activeSection.sectionKey;
-    // If section has persist, reload from DB
     if (state.activeSection.persistHistory) {
       await selectSection(state.activeSection.sectionKey);
     }
@@ -636,5 +628,5 @@ async function init() {
 }
 
 init().catch((error) => {
-  setStatus(`Lỗi khởi tạo: ${error.message}`, true);
+  setStatus(`Init error: ${error.message}`, true);
 });

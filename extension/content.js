@@ -47,7 +47,7 @@ function captureSelection() {
         }
       });
     } catch {
-      // Trang có thể đang đóng hoặc extension vừa reload.
+      // Page may be closing or extension just reloaded.
     }
   }, 180);
 }
