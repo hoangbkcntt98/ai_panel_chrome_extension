@@ -370,8 +370,8 @@ async function refreshPageContext() {
   }
 }
 
-function buildContextPayload() {
-  if (!el.includeContext.checked) return null;
+function buildContextPayload(force = false) {
+  if (!force && !el.includeContext.checked) return null;
   const context = state.context || {};
   return {
     title: context.title || "",
@@ -382,7 +382,7 @@ function buildContextPayload() {
 }
 
 // ===== Chat =====
-async function askAssistant(text) {
+async function askAssistant(text, forceContext = false) {
   const content = (text || "").trim();
   if (!content || state.loading) return;
 
@@ -400,7 +400,7 @@ async function askAssistant(text) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: state.messages.slice(-12),
-        context: buildContextPayload(),
+        context: buildContextPayload(forceContext),
         model: state.settings.model || undefined,
         systemPrompt: state.settings.systemPrompt || undefined,
         outputLanguage: state.settings.outputLanguage || undefined
@@ -446,7 +446,7 @@ function quickPrompt(action) {
       : "Translate and briefly explain the most important content of this page into Vietnamese.";
   }
   if (action === "summarize") {
-    return "Summarize this page: main points, key takeaways, and 3 bullet-point action items or notes if applicable.";
+    return "Summarize the page provided in the context below. Provide: main points, key takeaways, and 3 bullet-point action items or notes if applicable. Base your summary ONLY on the page content, not on prior knowledge.";
   }
   return "";
 }
@@ -525,7 +525,7 @@ el.messageInput.addEventListener("input", () => {
 });
 
 document.querySelectorAll("[data-action]").forEach((button) => {
-  button.addEventListener("click", () => askAssistant(quickPrompt(button.dataset.action)));
+  button.addEventListener("click", () => askAssistant(quickPrompt(button.dataset.action), true));
 });
 
 el.clearSelectionButton.addEventListener("click", () => {

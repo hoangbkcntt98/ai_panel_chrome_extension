@@ -192,7 +192,7 @@ function buildContextText(context) {
   if (context.title) parts.push(`Tieu de: ${clean(context.title, 500)}`);
   if (context.url) parts.push(`URL: ${clean(context.url, 1500)}`);
   if (context.selection) parts.push(`Doan nguoi dung dang chon:\n${clean(context.selection, 8000)}`);
-  if (context.pageText) parts.push(`Noi dung trang:\n${clean(context.pageText, 16000)}`);
+  if (context.pageText) parts.push(`FULL PAGE CONTENT (use this for summarizing the page):\n${clean(context.pageText, 16000)}`);
   return parts.join("\n\n");
 }
 
