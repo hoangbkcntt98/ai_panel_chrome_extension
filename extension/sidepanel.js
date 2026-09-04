@@ -586,6 +586,58 @@ async function deleteCurrentSection() {
 }
 
 // ===== Word management =====
+async function translateWordWithAI(word) {
+  const value = String(word || "").trim().slice(0, 500);
+  if (!value) return "";
+
+  const response = await fetch(`${getApiBase()}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: [{
+        role: "user",
+        content: `Translate the following word or short phrase into natural Vietnamese. Return only the Vietnamese translation, without explanations or quotation marks. If there are several common meanings, separate them with ";".\n\n${value}`
+      }],
+      context: null,
+      model: state.settings.model || undefined,
+      systemPrompt: "You are a concise vocabulary translation assistant. Translate the user's word or phrase into Vietnamese and return only the translation.",
+      outputLanguage: "Tiếng Việt"
+    })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `Translation HTTP ${response.status}`);
+  return String(data.text || "").trim().slice(0, 2000);
+}
+
+async function saveWordRecord(text, sourceUrl = "", sourceTitle = "") {
+  const value = String(text || "").trim().slice(0, 500);
+  if (!value) throw new Error("Missing word");
+
+  let translation = "";
+  try {
+    setStatus("Translating word…");
+    translation = await translateWordWithAI(value);
+  } catch (error) {
+    // Keep saving even when the AI provider is temporarily unavailable.
+    console.warn("Cannot translate word:", error.message);
+  }
+
+  const res = await fetch(`${getApiBase()}/api/words`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      word: value,
+      translation,
+      context: value,
+      sourceUrl: sourceUrl || "",
+      sourceTitle: sourceTitle || ""
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return { saved: data.word || null, translation };
+}
+
 async function saveWord() {
   const text = (state.selection || "").trim();
   if (!text) {
@@ -594,20 +646,9 @@ async function saveWord() {
   }
   const context = state.context || {};
   try {
-    setStatus("Saving word…");
-    const res = await fetch(`${getApiBase()}/api/words`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        word: text.slice(0, 500),
-        context: text,
-        sourceUrl: context.url || "",
-        sourceTitle: context.title || ""
-      })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    setStatus(`Saved word: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}"`);
+    const result = await saveWordRecord(text, context.url || "", context.title || "");
+    const suffix = result.translation ? ` → ${result.translation}` : " (translation unavailable)";
+    setStatus(`Saved word: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}"${suffix}`);
   } catch (err) {
     setStatus(`Save word error: ${err.message}`, true);
   }
@@ -674,6 +715,13 @@ async function openWordsDialog() {
 
     header.append(wordEl, delBtn);
     item.append(header);
+
+    if (w.translation) {
+      const translation = document.createElement("div");
+      translation.className = "word-item-translation";
+      translation.textContent = `Dịch: ${w.translation}`;
+      item.append(translation);
+    }
 
     if (w.source_url || w.source_title) {
       const source = document.createElement("div");
@@ -1099,20 +1147,9 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
 // Save word directly (used by context menu storage listener)
 async function saveWordToApi(text, sourceUrl, sourceTitle) {
   try {
-    setStatus(`Saving word: "${text.slice(0, 40)}…"`);
-    const res = await fetch(`${getApiBase()}/api/words`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        word: text.slice(0, 500),
-        context: text,
-        sourceUrl: sourceUrl || "",
-        sourceTitle: sourceTitle || ""
-      })
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    setStatus(`Saved word: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}"`);
+    const result = await saveWordRecord(text, sourceUrl, sourceTitle);
+    const suffix = result.translation ? ` → ${result.translation}` : " (translation unavailable)";
+    setStatus(`Saved word: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}"${suffix}`);
   } catch (err) {
     setStatus(`Save word error: ${err.message}`, true);
   }

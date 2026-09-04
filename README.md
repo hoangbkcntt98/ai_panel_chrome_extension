@@ -129,6 +129,7 @@ Backend sẽ dùng OpenAI Responses API khi `AI_PROVIDER=openai`.
 - Mở một website bình thường (`http` / `https`).
 - Bôi đen một đoạn text → panel sẽ nhận đoạn đang chọn.
 - Hoặc chuột phải → **Hỏi AI về đoạn đã chọn**.
+- Khi lưu từ, extension sẽ gọi AI để dịch sang tiếng Việt và hiển thị bản dịch trong danh sách **Saved words**.
 - Dùng các nút nhanh hoặc gõ câu hỏi.
 - Checkbox **Dùng nội dung trang** quyết định có gửi context của trang lên backend hay không.
 
@@ -166,6 +167,8 @@ Payload dạng:
   "model": "if/glm-4.7"
 }
 ```
+
+`POST /api/words` nhận thêm trường `translation` để lưu bản dịch tiếng Việt cùng với từ.
 
 Với 9Router, backend chuyển yêu cầu sang OpenAI-compatible `chat/completions`.
 

@@ -180,6 +180,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .word-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--bg); }
 .word-item-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .word-item-word { font-weight: 700; font-size: 13px; word-break: break-word; flex: 1; }
+.word-item-translation { margin-top: 5px; color: var(--accent); font-size: 12px; line-height: 1.4; word-break: break-word; }
 .word-item-delete { border: 0; background: transparent; color: var(--muted); font-size: 14px; cursor: pointer; padding: 0 4px; flex: 0 0 auto; }
 .word-item-delete:hover { color: var(--danger); }
 .word-item-context { margin: 6px 0 0; font-size: 11px; color: var(--muted); line-height: 1.4; word-break: break-word; }

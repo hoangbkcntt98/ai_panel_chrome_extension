@@ -73,11 +73,13 @@ async function ensureSchema() {
       CREATE TABLE IF NOT EXISTS saved_words (
         id SERIAL PRIMARY KEY,
         word TEXT NOT NULL,
+        translation TEXT,
         context TEXT,
         source_url TEXT,
         source_title TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE saved_words ADD COLUMN IF NOT EXISTS translation TEXT;
       CREATE INDEX IF NOT EXISTS idx_saved_words_created ON saved_words(created_at DESC);
     `);
     log("Database schema ensured");
@@ -148,11 +150,11 @@ async function clearMessagesFromDb(sectionKey) {
   await pgPool.query("UPDATE chat_sections SET updated_at = NOW() WHERE section_key = $1", [sectionKey]);
 }
 
-async function saveWord(word, context, sourceUrl, sourceTitle) {
+async function saveWord(word, translation, context, sourceUrl, sourceTitle) {
   const result = await pgPool.query(
-    `INSERT INTO saved_words (word, context, source_url, source_title)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [word, context || null, sourceUrl || null, sourceTitle || null]
+    `INSERT INTO saved_words (word, translation, context, source_url, source_title)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [word, translation || null, context || null, sourceUrl || null, sourceTitle || null]
   );
   return result.rows[0];
 }
@@ -585,10 +587,11 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const word = clean(body.word, 500);
       if (!word) return sendJson(res, 400, { error: "Missing word" });
+      const translation = clean(body.translation, 2000);
       const context = clean(body.context, 2000);
       const sourceUrl = clean(body.sourceUrl, 1500);
       const sourceTitle = clean(body.sourceTitle, 500);
-      const saved = await saveWord(word, context, sourceUrl, sourceTitle);
+      const saved = await saveWord(word, translation, context, sourceUrl, sourceTitle);
       log(`Saved word: ${word.slice(0, 50)}`);
       return sendJson(res, 200, { word: saved });
     } catch (error) {
@@ -622,4 +625,3 @@ server.listen(PORT, () => {
   log(`API key: ${AI_API_KEY ? "configured" : "missing"}`);
 });
   ensureSchema();
-
