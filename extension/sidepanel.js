@@ -5,7 +5,8 @@ const STORAGE_KEYS = {
   lastSelection: "lastSelection",
   pendingSelection: "pendingSelection",
   activeSection: "activeSection",
-  pendingSaveWord: "pendingSaveWord"
+  pendingSaveWord: "pendingSaveWord",
+  pendingAction: "pendingAction"
 };
 
 const state = {
@@ -870,12 +871,15 @@ el.saveSettingsButton.addEventListener("click", async () => {
   }
 });
 
-chrome.storage.onChanged.addListener((changes, area) => {
+chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== "local") return;
   const update = changes[STORAGE_KEYS.pendingSelection]?.newValue || changes[STORAGE_KEYS.lastSelection]?.newValue;
   if (update?.text) {
     state.selection = update.text;
     renderSelection();
+    if (changes[STORAGE_KEYS.pendingSelection]?.newValue) {
+      await chrome.storage.local.remove(STORAGE_KEYS.pendingSelection);
+    }
   }
   const saveWord = changes[STORAGE_KEYS.pendingSaveWord]?.newValue;
   if (saveWord?.text) {
@@ -887,7 +891,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
     }
     renderSelection();
     saveWordToApi(saveWord.text, saveWord.url, saveWord.title);
-    chrome.storage.local.remove(STORAGE_KEYS.pendingSaveWord);
+    await chrome.storage.local.remove(STORAGE_KEYS.pendingSaveWord);
+  }
+  const action = changes[STORAGE_KEYS.pendingAction]?.newValue;
+  if (action?.action) {
+    await refreshPageContext();
+    askAssistant(quickPrompt(action.action), true);
+    await chrome.storage.local.remove(STORAGE_KEYS.pendingAction);
   }
 });
 
@@ -917,6 +927,50 @@ async function saveWordToApi(text, sourceUrl, sourceTitle) {
     setStatus(`Save word error: ${err.message}`, true);
   }
 }
+
+// ===== In-panel keyboard shortcuts =====
+document.addEventListener("keydown", (event) => {
+  // Don't interfere when typing in inputs/textareas
+  const tag = event.target?.tagName?.toLowerCase();
+  const isTyping = tag === "input" || tag === "textarea" || tag === "select" || event.target?.isContentEditable;
+  if (isTyping) return;
+
+  // Alt+E: Explain
+  if (event.altKey && event.key.toLowerCase() === "e" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    askAssistant(quickPrompt("explain"), true);
+    return;
+  }
+  // Alt+T: Translate
+  if (event.altKey && event.key.toLowerCase() === "t" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    askAssistant(quickPrompt("translate"), true);
+    return;
+  }
+  // Alt+S: Summarize
+  if (event.altKey && event.key.toLowerCase() === "s" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    askAssistant(quickPrompt("summarize"), true);
+    return;
+  }
+  // Alt+W: Save word
+  if (event.altKey && event.key.toLowerCase() === "w" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    saveWord();
+    return;
+  }
+  // Alt+R: Read aloud selected text
+  if (event.altKey && event.key.toLowerCase() === "r" && !event.ctrlKey && !event.metaKey) {
+    event.preventDefault();
+    if (state.selection) ttsSpeak(state.selection, el.readSelectionButton);
+    return;
+  }
+  // Escape: close dialogs / stop TTS
+  if (event.key === "Escape") {
+    if (tts.speaking) ttsStop();
+    return;
+  }
+});
 
 // ===== Init =====
 async function init() {
