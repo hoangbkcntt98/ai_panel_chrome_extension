@@ -59,12 +59,12 @@
       },
       "description": "Ask AI about selected text"
     },
-    "summarize-page": {
+    "summarize-text": {
       "suggested_key": {
         "default": "Ctrl+Shift+M",
         "mac": "Command+Shift+M"
       },
-      "description": "Summarize current page"
+      "description": "Summarize selected text"
     }
   },
   "icons": {

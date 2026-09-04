@@ -94,9 +94,18 @@ chrome.commands.onCommand.addListener(async (command) => {
       }
       break;
     }
+    case "summarize-text":
+    // Keep accepting the previous command id for users upgrading an older
+    // extension version.
     case "summarize-page": {
       await chrome.storage.local.set({
-        pendingAction: { action: "summarize", updatedAt: Date.now() }
+        pendingAction: {
+          action: "summarize",
+          text: selectionText,
+          title: tab.title || "",
+          url: tab.url || "",
+          updatedAt: Date.now()
+        }
       });
       await openSidePanel(tab);
       break;

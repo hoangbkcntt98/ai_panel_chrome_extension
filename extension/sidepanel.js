@@ -86,6 +86,7 @@ function comboMatchesEvent(combo, event) {
 const state = {
   messages: [],
   selection: "",
+  selectionUrl: "",
   context: null,
   loading: false,
   settings: {
@@ -532,6 +533,7 @@ async function selectSection(sectionKey) {
   state.sectionContext = rememberedContext;
   state.context = rememberedContext;
   state.selection = rememberedContext?.selection || "";
+  state.selectionUrl = rememberedContext?.url || "";
   renderSelection();
   el.deleteSectionButton.classList.remove("hidden");
   el.deleteSectionButton.disabled = false;
@@ -862,7 +864,10 @@ async function loadState() {
   shortcutDraft = { ...state.settings.shortcuts };
 
   const selectionCandidate = stored[STORAGE_KEYS.pendingSelection] || stored[STORAGE_KEYS.lastSelection];
-  if (selectionCandidate?.text) state.selection = selectionCandidate.text;
+  if (selectionCandidate?.text) {
+    state.selection = selectionCandidate.text;
+    state.selectionUrl = String(selectionCandidate.url || "").trim();
+  }
   if (stored[STORAGE_KEYS.pendingSelection]) {
     await chrome.storage.local.remove(STORAGE_KEYS.pendingSelection);
   }
@@ -908,7 +913,10 @@ async function refreshPageContext() {
   try {
     const context = await getCurrentTabContext();
     state.context = normalizeSectionContext(context);
-    if (context?.selection) state.selection = context.selection;
+    if (context?.selection) {
+      state.selection = context.selection;
+      state.selectionUrl = context.url || "";
+    }
     el.pageLabel.textContent = context?.title || "Current page";
     renderSelection();
     const samePageAsSection = !state.sectionContext?.url
@@ -924,29 +932,29 @@ async function refreshPageContext() {
   }
 }
 
-function buildContextPayload(force = false, preferCurrentPage = false) {
+function buildContextPayload(force = false, selectionOnly = false) {
   if (!force && !el.includeContext.checked) return null;
   const liveContext = state.context || {};
   const rememberedContext = state.sectionContext;
-  const context = !preferCurrentPage && rememberedContext?.url
+  const context = !selectionOnly && rememberedContext?.url
     && liveContext.url
     && rememberedContext.url !== liveContext.url
     ? rememberedContext
     : liveContext;
+  const selection = context.selection
+    || (state.selectionUrl && context.url && state.selectionUrl === context.url ? state.selection : "");
   return {
     title: context.title || "",
     url: context.url || "",
-    // Summarize must never accidentally include a selection remembered from
-    // another tab/section; use only the live tab selection in that mode.
-    selection: preferCurrentPage
-      ? (context.selection || "")
-      : (state.selection || context.selection || ""),
-    pageText: context.pageText || ""
+    selection,
+    // Summary text intentionally excludes the page body and sends only the
+    // selected passage to the model.
+    pageText: selectionOnly ? "" : (context.pageText || "")
   };
 }
 
 // ===== Chat =====
-async function askAssistant(text, forceContext = false, preferCurrentPage = false) {
+async function askAssistant(text, forceContext = false, selectionOnly = false) {
   const content = (text || "").trim();
   if (!content || state.loading) return;
 
@@ -959,12 +967,20 @@ async function askAssistant(text, forceContext = false, preferCurrentPage = fals
 
   try {
     await refreshPageContext();
+    const contextPayload = buildContextPayload(forceContext, selectionOnly);
+    if (selectionOnly && !contextPayload?.selection) {
+      state.messages.pop();
+      await saveMessages();
+      renderMessages();
+      setStatus("Please select some text first to summarize.", true);
+      return;
+    }
     const response = await fetch(`${getApiBase()}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: state.messages.slice(-12),
-        context: buildContextPayload(forceContext, preferCurrentPage),
+        context: contextPayload,
         model: state.settings.model || undefined,
         systemPrompt: state.settings.systemPrompt || undefined,
         outputLanguage: state.settings.outputLanguage || undefined
@@ -1010,7 +1026,7 @@ function quickPrompt(action) {
       : "Translate and briefly explain the most important content of this page into Vietnamese.";
   }
   if (action === "summarize") {
-    return "Summarize the current browser tab using the page content in the context below. Provide the main points, key takeaways, and 3 bullet-point action items or notes if applicable. Base your summary ONLY on the current tab's page content, not on prior knowledge. Do not ask me to paste the page text or URL.";
+    return "Summarize the selected text below. Provide the main points, key takeaways, and concise bullet-point notes if useful. Base your response ONLY on the selected text, not on the rest of the page or prior knowledge.";
   }
   return "";
 }
@@ -1098,6 +1114,7 @@ document.querySelectorAll("[data-action]").forEach((button) => {
 
 el.clearSelectionButton.addEventListener("click", () => {
   state.selection = "";
+  state.selectionUrl = "";
   renderSelection();
 });
 
@@ -1221,6 +1238,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   const update = changes[STORAGE_KEYS.pendingSelection]?.newValue || changes[STORAGE_KEYS.lastSelection]?.newValue;
   if (update?.text) {
     state.selection = update.text;
+    state.selectionUrl = update.url || state.context?.url || "";
     if (state.context) state.context.selection = update.text;
     renderSelection();
     void persistSectionContext();
@@ -1231,6 +1249,7 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   const saveWord = changes[STORAGE_KEYS.pendingSaveWord]?.newValue;
   if (saveWord?.text) {
     state.selection = saveWord.text;
+    state.selectionUrl = saveWord.url || state.context?.url || "";
     if (saveWord.title || saveWord.url) {
       state.context = state.context || {};
       state.context.title = saveWord.title || state.context.title || "";
@@ -1243,6 +1262,11 @@ chrome.storage.onChanged.addListener(async (changes, area) => {
   }
   const action = changes[STORAGE_KEYS.pendingAction]?.newValue;
   if (action?.action) {
+    if (action.text) {
+      state.selection = action.text;
+      state.selectionUrl = action.url || "";
+      renderSelection();
+    }
     await refreshPageContext();
     askAssistant(quickPrompt(action.action), true, action.action === "summarize");
     await chrome.storage.local.remove(STORAGE_KEYS.pendingAction);
