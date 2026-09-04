@@ -47,6 +47,7 @@ const el = {
   testBackendButton: document.querySelector("#testBackendButton"),
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
   settingsStatus: document.querySelector("#settingsStatus"),
+  stopTtsButton: document.querySelector("#stopTtsButton"),
   // Section management
   sectionSelect: document.querySelector("#sectionSelect"),
   newSectionButton: document.querySelector("#newSectionButton"),
@@ -64,6 +65,102 @@ function normalizeBackendUrl(url) {
 
 function getApiBase() {
   return state.settings.backendUrl;
+}
+
+// ===== Text-to-Speech =====
+const tts = {
+  speaking: false,
+  currentButton: null,
+  synth: window.speechSynthesis,
+  defaultLang: "en-US",
+  voices: []
+};
+
+function loadVoices() {
+  tts.voices = tts.synth.getVoices() || [];
+  if (!tts.voices.length) return;
+  // Pick best English voice
+  const enVoice = tts.voices.find((v) => v.lang.startsWith("en") && v.name.includes("Google")) 
+    || tts.voices.find((v) => v.lang.startsWith("en-US"))
+    || tts.voices.find((v) => v.lang.startsWith("en"));
+  if (enVoice) tts.defaultLang = enVoice.lang;
+}
+
+if (tts.synth) {
+  loadVoices();
+  tts.synth.onvoiceschanged = loadVoices;
+}
+
+function ttsStop() {
+  if (tts.synth) tts.synth.cancel();
+  tts.speaking = false;
+  if (tts.currentButton) {
+    tts.currentButton.classList.remove("speaking");
+    tts.currentButton = null;
+  }
+  el.stopTtsButton.classList.add("hidden");
+}
+
+function ttsSpeak(text, button) {
+  if (!tts.synth) return;
+  ttsStop();
+
+  // Clean markdown for speech
+  const cleanText = text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/`(.+?)`/g, "$1")
+    .replace(/^#{1,3}\s+/gm, "")
+    .replace(/\[(.+?)\]\(.+?\)/g, "$1")
+    .replace(/^[\-\*] /gm, "")
+    .replace(/\n+/g, ". ")
+    .trim();
+
+  const utter = new SpeechSynthesisUtterance(cleanText);
+  
+  // Determine language: use output language setting, fallback to English
+  const langSetting = state.settings.outputLanguage || "";
+  let lang = "en-US";
+  if (langSetting.includes("English") || !langSetting) lang = "en-US";
+  else if (langSetting.includes("Vi")) lang = "vi-VN";
+  else if (langSetting.includes("日本")) lang = "ja-JP";
+  else if (langSetting.includes("中文")) lang = "zh-CN";
+  else if (langSetting.includes("한국")) lang = "ko-KR";
+  else if (langSetting.includes("Fran")) lang = "fr-FR";
+  else if (langSetting.includes("Deutsch")) lang = "de-DE";
+  else if (langSetting.includes("Espa")) lang = "es-ES";
+  else if (langSetting.includes("Рус")) lang = "ru-RU";
+
+  utter.lang = lang;
+  utter.rate = 1.0;
+  utter.pitch = 1.0;
+  
+  // Find matching voice
+  const matchVoice = tts.voices.find((v) => v.lang === lang)
+    || tts.voices.find((v) => v.lang.startsWith(lang.split("-")[0]));
+  if (matchVoice) utter.voice = matchVoice;
+
+  utter.onstart = () => {
+    tts.speaking = true;
+    tts.currentButton = button;
+    button.classList.add("speaking");
+    el.stopTtsButton.classList.remove("hidden");
+  };
+  utter.onend = () => {
+    tts.speaking = false;
+    button.classList.remove("speaking");
+    tts.currentButton = null;
+    el.stopTtsButton.classList.add("hidden");
+  };
+  utter.onerror = () => {
+    tts.speaking = false;
+    button.classList.remove("speaking");
+    tts.currentButton = null;
+    el.stopTtsButton.classList.add("hidden");
+  };
+
+  tts.synth.speak(utter);
 }
 
 // ===== Section key generator =====
@@ -140,6 +237,14 @@ function renderMessages() {
     node.classList.add(message.role);
     node.querySelector(".message-role").textContent = message.role === "user" ? "You" : "AI";
     node.querySelector(".message-body").innerHTML = parseMarkdown(message.content);
+    const ttsBtn = node.querySelector(".tts-button");
+    if (ttsBtn) {
+      if (message.role === "assistant") {
+        ttsBtn.addEventListener("click", () => ttsSpeak(message.content, ttsBtn));
+      } else {
+        ttsBtn.style.display = "none";
+      }
+    }
     el.chat.appendChild(node);
   }
   if (state.loading) {
@@ -532,6 +637,8 @@ el.clearSelectionButton.addEventListener("click", () => {
   state.selection = "";
   renderSelection();
 });
+
+el.stopTtsButton.addEventListener("click", ttsStop);
 
 el.clearChatButton.addEventListener("click", async () => {
   state.messages = [];

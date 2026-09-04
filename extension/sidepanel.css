@@ -163,3 +163,11 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 /* Section indicator */
 .section-active-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--accent); font-weight: 700; margin-left: 6px; }
 .section-active-badge::before { content: "📌"; font-size: 11px; }
+
+/* ===== Text-to-Speech ===== */
+.tts-button { position: absolute; bottom: 6px; right: 6px; border: 0; background: transparent; color: var(--muted); font-size: 14px; padding: 2px 4px; border-radius: 6px; opacity: 0; transition: opacity .15s; cursor: pointer; }
+.message { position: relative; }
+.message:hover .tts-button { opacity: .7; }
+.tts-button:hover { opacity: 1 !important; background: var(--surface-2); }
+.tts-button.speaking { opacity: 1 !important; color: var(--accent); }
+#stopTtsButton { color: var(--accent); font-weight: 700; }

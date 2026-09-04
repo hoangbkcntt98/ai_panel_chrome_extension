@@ -51,6 +51,7 @@
             <input id="includeContext" type="checkbox" checked />
             <span>Use page content</span>
           </label>
+          <button id="stopTtsButton" class="text-button hidden">⏹ Stop reading</button>
           <button id="clearChatButton" class="text-button">Clear chat</button>
         </div>
         <div class="composer">
@@ -145,6 +146,7 @@
       <article class="message">
         <div class="message-role"></div>
         <div class="message-body"></div>
+        <button class="tts-button" title="Read aloud" aria-label="Read aloud">🔊</button>
       </article>
     </template>
 
