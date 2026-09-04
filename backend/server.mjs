@@ -133,6 +133,11 @@ async function loadMessagesFromDb(sectionKey) {
   );
   return result.rows;
 }
+
+async function clearMessagesFromDb(sectionKey) {
+  await pgPool.query("DELETE FROM chat_messages WHERE section_key = $1", [sectionKey]);
+  await pgPool.query("UPDATE chat_sections SET updated_at = NOW() WHERE section_key = $1", [sectionKey]);
+}
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
 }
@@ -464,6 +469,21 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // DELETE /api/sections/:key/messages — clear chat history only (keep section)
+  if (req.method === "DELETE" && url.pathname.startsWith("/api/sections/") && url.pathname.endsWith("/messages")) {
+    try {
+      const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", "").replace("/messages", ""));
+      if (!sectionKey) return sendJson(res, 400, { error: "Missing sectionKey" });
+      await clearMessagesFromDb(sectionKey);
+      log(`Cleared messages for section: ${sectionKey}`);
+      return sendJson(res, 200, { ok: true });
+    } catch (error) {
+      log("DELETE messages error: " + error.message);
+      return sendJson(res, 500, { error: error.message });
+    }
+  }
+
+  // DELETE /api/sections/:key — delete entire section + messages
   if (req.method === "DELETE" && url.pathname.startsWith("/api/sections/")) {
     try {
       const sectionKey = decodeURIComponent(url.pathname.replace("/api/sections/", ""));

@@ -48,6 +48,7 @@ const el = {
   saveSettingsButton: document.querySelector("#saveSettingsButton"),
   settingsStatus: document.querySelector("#settingsStatus"),
   stopTtsButton: document.querySelector("#stopTtsButton"),
+  resetHistoryButton: document.querySelector("#resetHistoryButton"),
   // Section management
   sectionSelect: document.querySelector("#sectionSelect"),
   newSectionButton: document.querySelector("#newSectionButton"),
@@ -307,6 +308,7 @@ async function selectSection(sectionKey) {
   if (!sectionKey) {
     state.activeSection = null;
     state.messages = [];
+    el.resetHistoryButton.classList.add("hidden");
     await chrome.storage.local.set({
       [STORAGE_KEYS.messages]: [],
       [STORAGE_KEYS.activeSection]: null
@@ -341,10 +343,12 @@ async function selectSection(sectionKey) {
     }
     renderMessages();
     const count = state.messages.length;
+    el.resetHistoryButton.classList.remove("hidden");
     setStatus(count ? `Loaded ${count} messages` : "No chat history for this section");
   } else {
     const stored = await chrome.storage.local.get(STORAGE_KEYS.messages);
     state.messages = Array.isArray(stored[STORAGE_KEYS.messages]) ? stored[STORAGE_KEYS.messages] : [];
+    el.resetHistoryButton.classList.remove("hidden");
     renderMessages();
     setStatus("");
   }
@@ -419,6 +423,30 @@ async function deleteCurrentSection() {
     setStatus("Section deleted");
   } catch (err) {
     setStatus(`Delete error: ${err.message}`, true);
+  }
+}
+
+async function resetSectionHistory() {
+  if (!state.activeSection) return;
+  const sectionKey = state.activeSection.sectionKey;
+  const title = state.activeSection.title;
+  try {
+    setStatus("Resetting history…");
+    // Clear from DB (if persist is on)
+    if (state.activeSection.persistHistory) {
+      const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}/messages`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    // Clear from local state
+    state.messages = [];
+    await chrome.storage.local.set({ [STORAGE_KEYS.messages]: [] });
+    // Stop any TTS
+    ttsStop();
+    renderMessages();
+    setStatus(`History reset for "${title}"`);
+  } catch (err) {
+    setStatus(`Reset error: ${err.message}`, true);
   }
 }
 
@@ -639,6 +667,8 @@ el.clearSelectionButton.addEventListener("click", () => {
 });
 
 el.stopTtsButton.addEventListener("click", ttsStop);
+
+el.resetHistoryButton.addEventListener("click", resetSectionHistory);
 
 el.clearChatButton.addEventListener("click", async () => {
   state.messages = [];
