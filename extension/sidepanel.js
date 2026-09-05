@@ -1174,18 +1174,22 @@ async function askAssistant(text, forceContext = false, selectionOnly = false) {
 
 function quickPrompt(action) {
   const selected = state.selection?.trim();
+  // The backend also enforces this language, but keeping quick-action
+  // prompts aligned prevents a hard-coded language from conflicting with the
+  // user's setting.
+  const responseLanguage = String(state.settings.outputLanguage || "").trim() || "Vietnamese";
   if (action === "explain") {
     return selected
-      ? `Explain the following passage in an easy-to-understand way, highlighting key points and examples if useful:\n\n${selected}`
-      : "Explain the main content of this page in an easy-to-understand way, focusing on key concepts.";
+      ? `Explain the following passage in an easy-to-understand way, highlighting key points and examples if useful. Respond entirely in ${responseLanguage}:\n\n${selected}`
+      : `Explain the main content of this page in an easy-to-understand way, focusing on key concepts. Respond entirely in ${responseLanguage}.`;
   }
   if (action === "translate") {
     return selected
-      ? `Translate the following passage into Vietnamese naturally, preserving the meaning and briefly explaining difficult terms if any:\n\n${selected}`
-      : "Translate and briefly explain the most important content of this page into Vietnamese.";
+      ? `Translate the following passage into ${responseLanguage} naturally, preserving the meaning and briefly explaining difficult terms if any. Respond entirely in ${responseLanguage}:\n\n${selected}`
+      : `Translate and briefly explain the most important content of this page into ${responseLanguage}. Respond entirely in ${responseLanguage}.`;
   }
   if (action === "summarize") {
-    return "Summarize the selected text below. Provide the main points, key takeaways, and concise bullet-point notes if useful. Base your response ONLY on the selected text, not on the rest of the page or prior knowledge.";
+    return `Summarize the selected text below. Provide the main points, key takeaways, and concise bullet-point notes if useful. Base your response ONLY on the selected text, not on the rest of the page or prior knowledge. Respond entirely in ${responseLanguage}.`;
   }
   return "";
 }
