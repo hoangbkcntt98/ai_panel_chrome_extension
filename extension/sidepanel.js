@@ -1091,8 +1091,13 @@ function buildContextPayload(force = false, selectionOnly = false) {
         && rememberedContext.url !== liveContext.url
         ? rememberedContext
         : liveContext);
-  const selection = context.selection
-    || (state.selectionUrl && context.url && state.selectionUrl === context.url ? state.selection : "");
+  // For selection-only actions, use the selection cached by the content
+  // script even after clicking the side panel (which can clear the browser's
+  // live selection). This keeps Summarize text from sending an empty context.
+  const selection = selectionOnly
+    ? (state.selection?.trim() || context.selection || "")
+    : (context.selection
+      || (state.selectionUrl && context.url && state.selectionUrl === context.url ? state.selection : ""));
   return {
     title: context.title || "",
     url: context.url || "",
@@ -1189,7 +1194,9 @@ function quickPrompt(action) {
       : `Translate and briefly explain the most important content of this page into ${responseLanguage}. Respond entirely in ${responseLanguage}.`;
   }
   if (action === "summarize") {
-    return `Summarize the selected text below. Provide the main points, key takeaways, and concise bullet-point notes if useful. Base your response ONLY on the selected text, not on the rest of the page or prior knowledge. Respond entirely in ${responseLanguage}.`;
+    return selected
+      ? `Summarize the following selected text. Provide the main points, key takeaways, and concise bullet-point notes if useful. Base your response ONLY on this text, not on the rest of the page or prior knowledge. Respond entirely in ${responseLanguage}:\n\n${selected}`
+      : `Summarize the selected text below. Provide the main points, key takeaways, and concise bullet-point notes if useful. Base your response ONLY on the selected text, not on the rest of the page or prior knowledge. Respond entirely in ${responseLanguage}.`;
   }
   return "";
 }
