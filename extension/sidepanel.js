@@ -107,6 +107,7 @@ const state = {
 
 let shortcutDraft = { ...DEFAULT_SHORTCUTS };
 let shortcutCaptureInput = null;
+let savedWords = [];
 
 const el = {
   chat: document.querySelector("#chat"),
@@ -158,6 +159,7 @@ const el = {
   wordsButton: document.querySelector("#wordsButton"),
   wordsDialog: document.querySelector("#wordsDialog"),
   closeWordsButton: document.querySelector("#closeWordsButton"),
+  wordSearchInput: document.querySelector("#wordSearchInput"),
   wordsList: document.querySelector("#wordsList"),
   wordsCount: document.querySelector("#wordsCount"),
   // Shortcut inputs
@@ -682,7 +684,7 @@ async function translateWordWithAI(word) {
 }
 
 async function saveWordRecord(text, sourceUrl = "", sourceTitle = "") {
-  const value = String(text || "").trim().slice(0, 500);
+  const value = String(text || "").trim().slice(0, 500).toLowerCase();
   if (!value) throw new Error("Missing word");
 
   let translation = "";
@@ -707,7 +709,13 @@ async function saveWordRecord(text, sourceUrl = "", sourceTitle = "") {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-  return { saved: data.word || null, translation };
+  return {
+    saved: data.word || null,
+    translation: data.duplicate
+      ? String(data.word?.translation || "")
+      : (data.word?.translation || translation),
+    duplicate: Boolean(data.duplicate)
+  };
 }
 
 async function saveWord() {
@@ -719,8 +727,9 @@ async function saveWord() {
   const context = state.context || {};
   try {
     const result = await saveWordRecord(text, context.url || "", context.title || "");
+    const displayWord = String(result.saved?.word || text).toLowerCase();
     const suffix = result.translation ? ` → ${result.translation}` : " (translation unavailable)";
-    setStatus(`Saved word: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}"${suffix}`);
+    setStatus(`${result.duplicate ? "Word already saved" : "Saved word"}: "${displayWord.slice(0, 40)}${displayWord.length > 40 ? "…" : ""}"${suffix}`);
   } catch (err) {
     setStatus(`Save word error: ${err.message}`, true);
   }
@@ -739,28 +748,38 @@ async function loadWords() {
 }
 
 async function deleteWord(id) {
-  try {
-    await fetch(`${getApiBase()}/api/words/${id}`, { method: "DELETE" });
-  } catch (err) {
-    console.warn("Cannot delete word:", err.message);
+  const res = await fetch(`${getApiBase()}/api/words/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
   }
 }
 
-async function openWordsDialog() {
-  el.wordsList.innerHTML = '<p class="words-empty">Loading…</p>';
-  el.wordsCount.textContent = "";
-  el.wordsDialog.showModal();
+function renderWordsList() {
+  const query = String(el.wordSearchInput?.value || "").trim().toLowerCase();
+  const filteredWords = savedWords.filter((word) => {
+    if (!query) return true;
+    return [word.word, word.translation].some((value) =>
+      String(value || "").toLowerCase().includes(query)
+    );
+  });
 
-  const words = await loadWords();
-  if (!words.length) {
-    el.wordsList.innerHTML = '<p class="words-empty">No saved words yet. Right-click selected text on any page → "Save word to AI"</p>';
+  el.wordsCount.textContent = query
+    ? `${filteredWords.length} of ${savedWords.length} words`
+    : `${savedWords.length} word${savedWords.length !== 1 ? "s" : ""} saved`;
+  el.wordsList.replaceChildren();
+
+  if (!filteredWords.length) {
+    const empty = document.createElement("p");
+    empty.className = "words-empty";
+    empty.textContent = savedWords.length
+      ? "No words match your search."
+      : 'No saved words yet. Right-click selected text on any page → "Save word to AI"';
+    el.wordsList.appendChild(empty);
     return;
   }
 
-  el.wordsCount.textContent = `${words.length} word${words.length > 1 ? "s" : ""} saved`;
-  el.wordsList.replaceChildren();
-
-  for (const w of words) {
+  for (const w of filteredWords) {
     const item = document.createElement("div");
     item.className = "word-item";
 
@@ -769,19 +788,21 @@ async function openWordsDialog() {
 
     const wordEl = document.createElement("div");
     wordEl.className = "word-item-word";
-    wordEl.textContent = w.word;
+    wordEl.textContent = String(w.word || "").toLowerCase();
 
     const delBtn = document.createElement("button");
     delBtn.className = "word-item-delete";
     delBtn.textContent = "🗑";
     delBtn.title = "Delete";
     delBtn.addEventListener("click", async () => {
-      await deleteWord(w.id);
-      item.remove();
-      const remaining = el.wordsList.querySelectorAll(".word-item").length;
-      el.wordsCount.textContent = `${remaining} word${remaining !== 1 ? "s" : ""} saved`;
-      if (!remaining) {
-        el.wordsList.innerHTML = '<p class="words-empty">No saved words yet.</p>';
+      delBtn.disabled = true;
+      try {
+        await deleteWord(w.id);
+        savedWords = savedWords.filter((word) => word.id !== w.id);
+        renderWordsList();
+      } catch (error) {
+        setStatus(`Delete word error: ${error.message}`, true);
+        delBtn.disabled = false;
       }
     });
 
@@ -817,6 +838,16 @@ async function openWordsDialog() {
 
     el.wordsList.append(item);
   }
+}
+
+async function openWordsDialog() {
+  el.wordsList.innerHTML = '<p class="words-empty">Loading…</p>';
+  el.wordsCount.textContent = "";
+  if (el.wordSearchInput) el.wordSearchInput.value = "";
+  el.wordsDialog.showModal();
+
+  savedWords = await loadWords();
+  renderWordsList();
 }
 
 async function resetSectionHistory() {
@@ -909,7 +940,6 @@ async function getTabContext(tab) {
   try {
     const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_PAGE_CONTEXT" });
     if (response?.ok && response.context) {
-      console.log("[AI Sidekick] Tab pageText:", response.context.pageText || "");
       return response.context;
     }
   } catch {
@@ -927,7 +957,6 @@ async function getTabContext(tab) {
     })
   });
   if (!result) throw new Error("Could not read current tab");
-  console.log("[AI Sidekick] Tab pageText (executeScript):", result.pageText || "");
   return result;
 }
 
@@ -964,18 +993,9 @@ async function refreshContextTab() {
       url: tab.url || context.url || "",
       context: normalizeSectionContext(context)
     };
-    console.info("[AI Sidekick] Context tab loaded", {
-      tabId: tab.id,
-      title: state.contextTab.title,
-      url: state.contextTab.url,
-      pageTextChars: state.contextTab.context.pageText.length
-    });
     await chrome.storage.local.set({ [STORAGE_KEYS.contextTab]: state.contextTab });
     renderContextTab();
   } catch {
-    console.warn("[AI Sidekick] Context tab could not be read", {
-      tabId: state.contextTab?.tabId || null
-    });
     state.contextTab = null;
     await chrome.storage.local.remove(STORAGE_KEYS.contextTab);
     renderContextTab();
@@ -1006,12 +1026,6 @@ async function openTabContextDialog() {
             url: tab.url || context.url || "",
             context: normalizeSectionContext(context)
           };
-          console.info("[AI Sidekick] Context tab selected", {
-            tabId: tab.id,
-            title: state.contextTab.title,
-            url: state.contextTab.url,
-            pageTextChars: state.contextTab.context.pageText.length
-          });
           el.includeContext.checked = true;
           await chrome.storage.local.set({ [STORAGE_KEYS.contextTab]: state.contextTab });
           renderContextTab();
@@ -1113,14 +1127,6 @@ async function askAssistant(text, forceContext = false, selectionOnly = false) {
     await refreshPageContext();
     await refreshContextTab();
     const contextPayload = buildContextPayload(forceContext, selectionOnly);
-    console.info("[AI Sidekick] Sending context", {
-      source: contextPayload?.source || "none",
-      contextTabId: contextPayload?.contextTabId || null,
-      title: contextPayload?.title || "",
-      url: contextPayload?.url || "",
-      selectionChars: contextPayload?.selection?.length || 0,
-      pageTextChars: contextPayload?.pageText?.length || 0
-    });
     if (selectionOnly && !contextPayload?.selection) {
       state.messages.pop();
       await saveMessages();
@@ -1289,6 +1295,7 @@ el.saveWordButton.addEventListener("click", saveWord);
 el.wordsButton.addEventListener("click", openWordsDialog);
 
 el.closeWordsButton.addEventListener("click", () => el.wordsDialog.close());
+el.wordSearchInput?.addEventListener("input", renderWordsList);
 
 el.stopTtsButton.addEventListener("click", ttsStop);
 
@@ -1455,8 +1462,9 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 async function saveWordToApi(text, sourceUrl, sourceTitle) {
   try {
     const result = await saveWordRecord(text, sourceUrl, sourceTitle);
+    const displayWord = String(result.saved?.word || text).toLowerCase();
     const suffix = result.translation ? ` → ${result.translation}` : " (translation unavailable)";
-    setStatus(`Saved word: "${text.slice(0, 40)}${text.length > 40 ? "…" : ""}"${suffix}`);
+    setStatus(`${result.duplicate ? "Word already saved" : "Saved word"}: "${displayWord.slice(0, 40)}${displayWord.length > 40 ? "…" : ""}"${suffix}`);
   } catch (err) {
     setStatus(`Save word error: ${err.message}`, true);
   }

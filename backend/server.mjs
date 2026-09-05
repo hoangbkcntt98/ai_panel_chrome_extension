@@ -82,6 +82,22 @@ async function ensureSchema() {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       ALTER TABLE saved_words ADD COLUMN IF NOT EXISTS translation TEXT;
+      -- Normalize existing entries and remove case/whitespace duplicates before
+      -- enforcing uniqueness for all newly saved words.
+      WITH ranked_words AS (
+        SELECT
+          id,
+          ROW_NUMBER() OVER (
+            PARTITION BY LOWER(TRIM(word))
+            ORDER BY created_at ASC, id ASC
+          ) AS row_num
+        FROM saved_words
+      )
+      DELETE FROM saved_words
+      WHERE id IN (SELECT id FROM ranked_words WHERE row_num > 1);
+      UPDATE saved_words SET word = LOWER(TRIM(word));
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_words_word_lower
+        ON saved_words (LOWER(word));
       CREATE INDEX IF NOT EXISTS idx_saved_words_created ON saved_words(created_at DESC);
     `);
     log("Database schema ensured");
@@ -164,12 +180,34 @@ async function clearMessagesFromDb(sectionKey) {
 }
 
 async function saveWord(word, translation, context, sourceUrl, sourceTitle) {
-  const result = await pgPool.query(
-    `INSERT INTO saved_words (word, translation, context, source_url, source_title)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [word, translation || null, context || null, sourceUrl || null, sourceTitle || null]
-  );
-  return result.rows[0];
+  const normalizedWord = String(word || "").trim().toLowerCase();
+  const findExisting = async () => {
+    const existing = await pgPool.query(
+      "SELECT * FROM saved_words WHERE LOWER(TRIM(word)) = $1 ORDER BY created_at ASC, id ASC LIMIT 1",
+      [normalizedWord]
+    );
+    return existing.rows[0] || null;
+  };
+
+  const existing = await findExisting();
+  if (existing) return { ...existing, duplicate: true };
+
+  try {
+    const result = await pgPool.query(
+      `INSERT INTO saved_words (word, translation, context, source_url, source_title)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [normalizedWord, translation || null, context || null, sourceUrl || null, sourceTitle || null]
+    );
+    return { ...result.rows[0], duplicate: false };
+  } catch (error) {
+    // A concurrent request may win the unique-index race. Treat it as a
+    // duplicate rather than returning an error to the user.
+    if (error.code === "23505") {
+      const duplicate = await findExisting();
+      if (duplicate) return { ...duplicate, duplicate: true };
+    }
+    throw error;
+  }
 }
 
 async function listWords(limit = 200) {
@@ -453,12 +491,6 @@ const server = http.createServer(async (req, res) => {
       
       log(`POST /chat - model: ${body.model || AI_MODEL}, messages: ${messages.length}`);
       const requestContext = body.context && typeof body.context === "object" ? body.context : null;
-      log(`  context.source: ${requestContext?.source || "none"}`);
-      log(`  context.tabId: ${requestContext?.contextTabId || "none"}`);
-      log(`  context.title: ${clean(requestContext?.title, 200) || "(none)"}`);
-      log(`  context.url: ${clean(requestContext?.url, 500) || "(none)"}`);
-      log(`  context.selectionChars: ${String(requestContext?.selection || "").length}`);
-      log(`  context.pageTextChars: ${String(requestContext?.pageText || "").length}`);
       
       if (!messages.length) return sendJson(res, 400, { error: "Missing messages" });
 
@@ -632,8 +664,8 @@ const server = http.createServer(async (req, res) => {
       const sourceUrl = clean(body.sourceUrl, 1500);
       const sourceTitle = clean(body.sourceTitle, 500);
       const saved = await saveWord(word, translation, context, sourceUrl, sourceTitle);
-      log(`Saved word: ${word.slice(0, 50)}`);
-      return sendJson(res, 200, { word: saved });
+      log(`${saved.duplicate ? "Word already exists" : "Saved word"}: ${String(saved.word || word).slice(0, 50)}`);
+      return sendJson(res, 200, { word: saved, duplicate: Boolean(saved.duplicate) });
     } catch (error) {
       log("POST /api/words error: " + error.message);
       return sendJson(res, 500, { error: error.message });
