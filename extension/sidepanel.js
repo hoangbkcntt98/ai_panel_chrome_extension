@@ -156,6 +156,7 @@ const el = {
   newSectionStatus: document.querySelector("#newSectionStatus"),
   // Words management
   saveWordButton: document.querySelector("#saveWordButton"),
+  addToAnkiButton: document.querySelector("#addToAnkiButton"),
   wordsButton: document.querySelector("#wordsButton"),
   wordsDialog: document.querySelector("#wordsDialog"),
   closeWordsButton: document.querySelector("#closeWordsButton"),
@@ -659,6 +660,53 @@ async function deleteCurrentSection() {
   }
 }
 
+// ===== Anki =====
+const pendingAnkiNotes = new Set();
+
+async function addToAnki(text, context = "", button = el.addToAnkiButton, statusElement = null) {
+  const word = String(text || "").trim();
+  const destinationLanguage = state.settings.outputLanguage || "";
+  const key = JSON.stringify([word, destinationLanguage]);
+  const showStatus = (message, error = false) => {
+    setStatus(message, error);
+    if (statusElement) {
+      statusElement.textContent = message;
+      statusElement.classList.toggle("error", error);
+    }
+  };
+  if (!word || word.length > 500) {
+    showStatus("Select a word or short phrase (1–500 characters) to add to Anki.", true);
+    return;
+  }
+  if (pendingAnkiNotes.has(key)) return;
+  pendingAnkiNotes.add(key);
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = "Adding…";
+  showStatus("Generating and saving Anki note…");
+  try {
+    const response = await fetch(`${getApiBase()}/api/anki`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        word,
+        context: String(context || "").trim().slice(0, 2000),
+        destinationLanguage,
+        model: state.settings.model || undefined
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.saved) throw new Error(data.error || `HTTP ${response.status}`);
+    showStatus(`Saved to Anki database: "${data.word}" · ${data.destinationLanguage} · ${data.meaning}`);
+  } catch (error) {
+    showStatus(`Add To Anki error: ${error.message}`, true);
+  } finally {
+    pendingAnkiNotes.delete(key);
+    button.disabled = false;
+    button.textContent = label;
+  }
+}
+
 // ===== Word management =====
 async function translateWordWithAI(word) {
   const value = String(word || "").trim().slice(0, 500);
@@ -806,7 +854,16 @@ function renderWordsList() {
       }
     });
 
-    header.append(wordEl, delBtn);
+    const ankiButton = document.createElement("button");
+    ankiButton.type = "button";
+    ankiButton.className = "text-button";
+    ankiButton.textContent = "Add To Anki";
+    const ankiStatus = document.createElement("p");
+    ankiStatus.className = "status-text";
+    ankiStatus.setAttribute("aria-live", "polite");
+    ankiButton.addEventListener("click", () => addToAnki(w.word, w.context || "", ankiButton, ankiStatus));
+
+    header.append(wordEl, ankiButton, delBtn);
     item.append(header);
 
     if (w.translation) {
@@ -835,6 +892,7 @@ function renderWordsList() {
     date.className = "word-item-date";
     date.textContent = new Date(w.created_at).toLocaleString();
     item.append(date);
+    item.append(ankiStatus);
 
     el.wordsList.append(item);
   }
@@ -1302,6 +1360,7 @@ el.readSelectionButton.addEventListener("click", () => {
 });
 
 el.saveWordButton.addEventListener("click", saveWord);
+el.addToAnkiButton.addEventListener("click", () => addToAnki(state.selection));
 
 el.wordsButton.addEventListener("click", openWordsDialog);
 
