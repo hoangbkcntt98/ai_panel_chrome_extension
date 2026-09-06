@@ -560,7 +560,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {
         saved: true,
         noteId: note.anki_note_id,
-        word: fields.Word,
+        word: note.source,
         meaning: fields.MeaningDestination,
         destinationLanguage: fields.destination_language
       });

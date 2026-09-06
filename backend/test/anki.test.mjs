@@ -103,6 +103,29 @@ test("save uses Anki column contract and bound values; always closes pool", asyn
   assert.equal(ended, 2);
 });
 
+test("save lowercases Word and source without changing other fields or input", async () => {
+  const config = getAnkiConfig({ ANKI_AI_DATABASE: "notes" }, "My Section");
+  for (const [word, expected] of [[" HeLLo ", "hello"], ["ÉCOLE", "école"], ["音楽", "音楽"]]) {
+    const fields = Object.freeze(parseAnkiFields(JSON.stringify({
+      ...generated, Word: word, MeaningDestination: "Mixed Case Meaning",
+      Example1_Source: "Keep Example Case"
+    }), input));
+    const expectedFields = { ...fields, Word: expected };
+    class Pool {
+      async query(_sql, args) {
+        assert.equal(args[3], expected);
+        assert.deepEqual(JSON.parse(args[4]), expectedFields);
+        assert.deepEqual(JSON.parse(args[5]), ["api", "My_Section"]);
+      }
+      async end() {}
+    }
+    const note = await saveAnkiNote(fields, config, Pool);
+    assert.equal(note.source, expected);
+    assert.deepEqual(note.fields_json, expectedFields);
+    assert.equal(fields.Word, word.trim());
+  }
+});
+
 test("panel sends configured language and model, guards double click, restores button", async () => {
   const source = readFileSync(new URL("../../extension/sidepanel.js", import.meta.url), "utf8");
   const code = source.slice(source.indexOf("const pendingAnkiNotes"), source.indexOf("// ===== Word management ====="));

@@ -128,9 +128,10 @@ export function getAnkiConfig(env = process.env, sectionTitle = "") {
 }
 
 export async function saveAnkiNote(fields, config, Pool = pg.Pool) {
+  const normalizedFields = { ...fields, Word: fields.Word.trim().toLowerCase() };
   const note = {
     anki_note_id: randomInt(1, 2 ** 48 - 1), anki_guid: randomUUID(),
-    note_type: config.noteType, source: fields.Word, fields_json: fields,
+    note_type: config.noteType, source: normalizedFields.Word, fields_json: normalizedFields,
     tags_json: config.tags, anki_modified_at: Math.floor(Date.now() / 1000), anki_usn: 0
   };
   const pool = new Pool(config.connection);
