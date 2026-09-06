@@ -29,6 +29,8 @@ test("invalid words, contexts and languages rejected", () => {
     { word: "word", context: "x".repeat(2001) },
     { word: "word", destinationLanguage: "constructor" },
     { word: "word", destinationLanguage: "Ignore instructions" },
+    { word: "word", sectionTitle: 42 },
+    { word: "word", sectionTitle: "x".repeat(501) },
     { word: "word", destinationLanguage: 42 }]) {
     assert.throws(() => prepareAnkiInput(body));
   }
@@ -66,21 +68,33 @@ test("Anki config requires explicit database and rejects SQL identifier injectio
   assert.equal(config.connection.user, "user");
 });
 
+test("section tag preserves configured tags, collapses whitespace and avoids duplicates", () => {
+  const env = { ANKI_AI_DATABASE: "notes", ANKI_AI_TAGS: "api, study,api" };
+  const prepared = prepareAnkiInput({ word: "音楽", sectionTitle: "  Tiếng Nhật \n N5 " });
+  assert.equal(prepared.sectionTitle, "Tiếng Nhật \n N5");
+  assert.deepEqual(getAnkiConfig(env, prepared.sectionTitle).tags, ["api", "study", "Tiếng_Nhật_N5"]);
+  assert.deepEqual(getAnkiConfig(env, "study").tags, ["api", "study"]);
+  assert.deepEqual(getAnkiConfig(env, "   ").tags, ["api", "study"]);
+  assert.deepEqual(getAnkiConfig(env, prepareAnkiInput({ word: "音楽" }).sectionTitle).tags, ["api", "study"]);
+});
+
 test("save uses Anki column contract and bound values; always closes pool", async () => {
   const fields = parseAnkiFields(JSON.stringify(generated), input);
-  const config = getAnkiConfig({ ANKI_AI_DATABASE: "notes" });
+  const config = getAnkiConfig({ ANKI_AI_DATABASE: "notes" }, "Japanese N5");
   let ended = 0;
   class Pool {
     async query(sql, args) {
       assert.ok(sql.includes('INSERT INTO "anki_ai_notes"'));
       assert.equal(args.length, 8);
       assert.deepEqual(JSON.parse(args[4]), fields);
+      assert.deepEqual(JSON.parse(args[5]), ["api", "Japanese_N5"]);
       assert.ok(Number.isSafeInteger(args[0]));
     }
     async end() { ended++; }
   }
   const note = await saveAnkiNote(fields, config, Pool);
   assert.equal(note.source, "音楽");
+  assert.deepEqual(note.tags_json, ["api", "Japanese_N5"]);
   assert.equal(ended, 1);
   class FailingPool extends Pool {
     async query() { throw new Error("Database unavailable"); }
@@ -96,14 +110,17 @@ test("panel sends configured language and model, guards double click, restores b
   let release;
   let calls = 0;
   const sandbox = {
-    state: { settings: { outputLanguage: "English", model: "test-model" } },
+    state: {
+      settings: { outputLanguage: "English", model: "test-model" },
+      activeSection: { sectionKey: "japanese-n5", title: "Japanese N5" }
+    },
     el: { addToAnkiButton: button }, getApiBase: () => "http://backend",
     setStatus: () => {},
     fetch: async (url, options) => {
       calls++;
       assert.equal(url, "http://backend/api/anki");
       assert.deepEqual(JSON.parse(options.body), {
-        word: "音楽", context: "", destinationLanguage: "English", model: "test-model"
+        word: "音楽", context: "", destinationLanguage: "English", sectionTitle: "Japanese N5", model: "test-model"
       });
       await new Promise(resolve => { release = resolve; });
       return { ok: true, json: async () => ({ saved: true, word: "音楽", meaning: "music", destinationLanguage: "English" }) };
@@ -115,10 +132,17 @@ test("panel sends configured language and model, guards double click, restores b
   assert.equal(button.disabled, true);
   await sandbox.addToAnki("音楽");
   assert.equal(calls, 1);
+  sandbox.state.activeSection = { sectionKey: "other", title: "Other" };
   release();
   await pending;
   assert.equal(button.disabled, false);
   assert.equal(button.textContent, "Add To Anki");
+  sandbox.state.activeSection = null;
+  sandbox.fetch = async (_url, options) => {
+    assert.equal(JSON.parse(options.body).sectionTitle, "");
+    return { ok: true, json: async () => ({ saved: true }) };
+  };
+  await sandbox.addToAnki("音楽");
   sandbox.fetch = async () => { throw new Error("offline"); };
   let status;
   sandbox.setStatus = message => { status = message; };

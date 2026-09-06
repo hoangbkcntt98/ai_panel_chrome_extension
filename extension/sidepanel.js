@@ -666,7 +666,8 @@ const pendingAnkiNotes = new Set();
 async function addToAnki(text, context = "", button = el.addToAnkiButton, statusElement = null) {
   const word = String(text || "").trim();
   const destinationLanguage = state.settings.outputLanguage || "";
-  const key = JSON.stringify([word, destinationLanguage]);
+  const sectionTitle = state.activeSection?.title || "";
+  const key = JSON.stringify([word, destinationLanguage, sectionTitle]);
   const showStatus = (message, error = false) => {
     setStatus(message, error);
     if (statusElement) {
@@ -692,6 +693,7 @@ async function addToAnki(text, context = "", button = el.addToAnkiButton, status
         word,
         context: String(context || "").trim().slice(0, 2000),
         destinationLanguage,
+        sectionTitle,
         model: state.settings.model || undefined
       })
     });

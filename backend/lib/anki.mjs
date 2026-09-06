@@ -23,7 +23,12 @@ export function prepareAnkiInput(body) {
     throw new Error("Provide word (1–500 characters) and optional context (up to 2000 characters).");
   }
   if (!destinationLanguage) throw new Error("Unsupported destination language.");
-  return { word, context, destinationLanguage };
+  if (body.sectionTitle != null && typeof body.sectionTitle !== "string") {
+    throw new Error("Invalid section title.");
+  }
+  const sectionTitle = (body.sectionTitle || "").trim();
+  if (sectionTitle.length > 500) throw new Error("Section title must be at most 500 characters.");
+  return { word, context, destinationLanguage, sectionTitle };
 }
 
 function emptyFields(word, destinationLanguage) {
@@ -95,7 +100,7 @@ export function parseAnkiFields(content, { word, destinationLanguage }) {
   return fields;
 }
 
-export function getAnkiConfig(env = process.env) {
+export function getAnkiConfig(env = process.env, sectionTitle = "") {
   const database = env.ANKI_AI_DATABASE?.trim() || env.DB_NAME || "";
   const table = env.ANKI_AI_NOTES_TABLE?.trim() || "anki_ai_notes";
   const noteType = env.ANKI_AI_NOTE_TYPE?.trim() || "AIWordWithImage";
@@ -104,9 +109,12 @@ export function getAnkiConfig(env = process.env) {
     throw new Error("Invalid Anki database or table name.");
   }
   if (noteType.length > 255) throw new Error("Invalid Anki note type.");
+  const sectionTag = sectionTitle.trim().replace(/\s+/g, "_");
+  const tags = (env.ANKI_AI_TAGS || "api").split(",").map(tag => tag.trim()).filter(Boolean);
+  if (sectionTag) tags.push(sectionTag);
   return {
     table, noteType,
-    tags: [...new Set((env.ANKI_AI_TAGS || "api").split(",").map(tag => tag.trim()).filter(Boolean))],
+    tags: [...new Set(tags)],
     connection: {
       host: env.DB_HOST || env.PG_HOST || "localhost",
       port: Number(env.DB_PORT || env.PG_PORT || 5432),

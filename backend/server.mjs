@@ -539,7 +539,7 @@ const server = http.createServer(async (req, res) => {
     if (!AI_API_KEY) return sendJson(res, 503, { error: "Configure AI_API_KEY in backend/.env." });
     try {
       // Check database configuration before spending an AI request.
-      const config = getAnkiConfig();
+      const config = getAnkiConfig(process.env, input.sectionTitle);
       const model = resolveModel(body.model);
       const params = {
         model,
