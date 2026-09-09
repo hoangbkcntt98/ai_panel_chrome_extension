@@ -136,6 +136,10 @@
         <input id="backendUrl" class="field-input" type="url" placeholder="http://localhost:8787" />
         <p class="field-help">Default: <code>http://localhost:8787</code></p>
 
+        <label class="field-label" for="secretKey">Secret Key</label>
+        <input id="secretKey" class="field-input" type="password" placeholder="Leave empty if not set" autocomplete="off" />
+        <p class="field-help">Phải khớp với <code>SECRET_KEY</code> trong <code>.env</code> của backend.</p>
+
         <label class="field-label" for="modelId">Model ID</label>
         <div class="model-row">
           <input id="modelId" class="field-input" type="text" list="modelOptions" placeholder="e.g. if/glm-4.7" autocomplete="off" />

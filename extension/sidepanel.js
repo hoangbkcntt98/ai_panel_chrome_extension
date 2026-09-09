@@ -93,6 +93,7 @@ const state = {
   loading: false,
   settings: {
     backendUrl: DEFAULT_BACKEND_URL,
+    secretKey: "",
     model: "",
     systemPrompt: "",
     outputLanguage: "",
@@ -132,6 +133,7 @@ const el = {
   settingsButton: document.querySelector("#settingsButton"),
   settingsDialog: document.querySelector("#settingsDialog"),
   backendUrl: document.querySelector("#backendUrl"),
+  secretKey: document.querySelector("#secretKey"),
   modelId: document.querySelector("#modelId"),
   modelOptions: document.querySelector("#modelOptions"),
   refreshModelsButton: document.querySelector("#refreshModelsButton"),
@@ -244,6 +246,12 @@ function getApiBase() {
   return state.settings.backendUrl;
 }
 
+function authHeaders(extra = {}) {
+  const h = { ...extra };
+  if (state.settings.secretKey) h["X-Secret-Key"] = state.settings.secretKey;
+  return h;
+}
+
 function normalizeSectionContext(context) {
   if (!context || typeof context !== "object") return null;
   return {
@@ -266,7 +274,7 @@ async function persistSectionContext() {
   try {
     await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(section.sectionKey)}/context`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ context })
     });
   } catch (error) {
@@ -477,7 +485,7 @@ function renderSelection() {
 // ===== Section management =====
 async function fetchSections() {
   try {
-    const res = await fetch(`${getApiBase()}/api/sections`);
+    const res = await fetch(`${getApiBase()}/api/sections`, { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     state.sections = Array.isArray(data.sections) ? data.sections : [];
@@ -556,7 +564,7 @@ async function selectSection(sectionKey) {
   if (sec.persist_history) {
     setStatus("Loading chat history…");
     try {
-      const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}/messages`);
+      const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}/messages`, { headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       state.messages = Array.isArray(data.messages) ? data.messages : [];
@@ -584,7 +592,7 @@ async function persistCurrentSection() {
   try {
     await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(state.activeSection.sectionKey)}/messages`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ messages: state.messages })
     });
   } catch (err) {
@@ -609,7 +617,7 @@ async function createNewSection() {
   try {
     const res = await fetch(`${getApiBase()}/api/sections`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ sectionKey, title, persistHistory })
     });
     const data = await res.json().catch(() => ({}));
@@ -638,7 +646,7 @@ async function deleteCurrentSection() {
   if (!window.confirm(`Delete section "${title}"? This will also delete its saved chat history.`)) return;
   try {
     el.deleteSectionButton.disabled = true;
-    const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}`, { method: "DELETE" });
+    const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}`, { method: "DELETE", headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     state.activeSection = null;
@@ -688,7 +696,7 @@ async function addToAnki(text, context = "", button = el.addToAnkiButton, status
   try {
     const response = await fetch(`${getApiBase()}/api/anki`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         word,
         context: String(context || "").trim().slice(0, 2000),
@@ -720,7 +728,7 @@ async function translateWordWithAI(word) {
 
   const response = await fetch(`${getApiBase()}/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       messages: [{
         role: "user",
@@ -752,7 +760,7 @@ async function saveWordRecord(text, sourceUrl = "", sourceTitle = "") {
 
   const res = await fetch(`${getApiBase()}/api/words`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       word: value,
       translation,
@@ -791,7 +799,7 @@ async function saveWord() {
 
 async function loadWords() {
   try {
-    const res = await fetch(`${getApiBase()}/api/words`);
+    const res = await fetch(`${getApiBase()}/api/words`, { headers: authHeaders() });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return Array.isArray(data.words) ? data.words : [];
@@ -802,7 +810,7 @@ async function loadWords() {
 }
 
 async function deleteWord(id) {
-  const res = await fetch(`${getApiBase()}/api/words/${id}`, { method: "DELETE" });
+  const res = await fetch(`${getApiBase()}/api/words/${id}`, { method: "DELETE", headers: authHeaders() });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || `HTTP ${res.status}`);
@@ -922,7 +930,7 @@ async function resetSectionHistory() {
     setStatus("Resetting history…");
     // Clear from DB (if persist is on)
     if (state.activeSection.persistHistory) {
-      const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}/messages`, { method: "DELETE" });
+      const res = await fetch(`${getApiBase()}/api/sections/${encodeURIComponent(sectionKey)}/messages`, { method: "DELETE", headers: authHeaders() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     }
@@ -955,6 +963,7 @@ async function loadState() {
     : {};
   state.settings = {
     backendUrl: normalizeBackendUrl(stored[STORAGE_KEYS.settings]?.backendUrl || DEFAULT_BACKEND_URL),
+    secretKey: String(stored[STORAGE_KEYS.settings]?.secretKey || "").trim(),
     model: String(stored[STORAGE_KEYS.settings]?.model || "").trim(),
     systemPrompt: String(stored[STORAGE_KEYS.settings]?.systemPrompt || "").trim(),
     outputLanguage: String(stored[STORAGE_KEYS.settings]?.outputLanguage || "").trim(),
@@ -986,6 +995,7 @@ async function loadState() {
   }
 
   el.backendUrl.value = state.settings.backendUrl;
+  el.secretKey.value = state.settings.secretKey || "";
   el.modelId.value = state.settings.model;
   el.systemPrompt.value = state.settings.systemPrompt;
   el.outputLanguage.value = state.settings.outputLanguage;
@@ -1205,7 +1215,7 @@ async function askAssistant(text, forceContext = false, selectionOnly = false) {
     }
     const response = await fetch(`${getApiBase()}/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         messages: state.messages.slice(-12),
         context: contextPayload,
@@ -1281,7 +1291,7 @@ async function refreshModels() {
   el.settingsStatus.textContent = "Loading model list…";
   el.settingsStatus.classList.remove("error");
   try {
-    const response = await fetch(`${url}/models`);
+    const response = await fetch(`${url}/models`, { headers: authHeaders() });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
     const models = Array.isArray(data.models) ? data.models : [];
@@ -1303,7 +1313,7 @@ async function testBackend() {
   el.settingsStatus.textContent = "Testing…";
   el.settingsStatus.classList.remove("error");
   try {
-    const response = await fetch(`${url}/health`);
+    const response = await fetch(`${url}/health`, { headers: authHeaders() });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.ok) throw new Error("Backend not ready");
     state.backendInfo = data;
@@ -1408,6 +1418,7 @@ el.newSectionTitle.addEventListener("keydown", (e) => {
 
 el.settingsButton.addEventListener("click", () => {
   el.backendUrl.value = state.settings.backendUrl;
+  el.secretKey.value = state.settings.secretKey || "";
   el.modelId.value = state.settings.model;
   el.systemPrompt.value = state.settings.systemPrompt;
   el.outputLanguage.value = state.settings.outputLanguage;
@@ -1448,6 +1459,7 @@ el.saveSettingsButton.addEventListener("click", async () => {
   endShortcutCapture();
   state.settings = {
     backendUrl,
+    secretKey: el.secretKey.value.trim(),
     model: el.modelId.value.trim(),
     systemPrompt: el.systemPrompt.value.trim(),
     outputLanguage: el.outputLanguage.value.trim(),

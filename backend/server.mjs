@@ -18,6 +18,7 @@ async function log(msg) {
 appendFile(LOG_FILE, `\n=== SERVER STARTED ${new Date().toISOString()} ===\n`).catch(() => {});
 
 const PORT = Number(process.env.PORT || 8787);
+const SECRET_KEY = process.env.SECRET_KEY || "";
 const AI_PROVIDER = (process.env.AI_PROVIDER || (process.env.OPENAI_API_KEY ? "openai" : "9router")).toLowerCase();
 const AI_API_KEY = process.env.AI_API_KEY || process.env.OPENAI_API_KEY || "";
 const AI_MODEL = process.env.AI_MODEL || process.env.OPENAI_MODEL || "";
@@ -231,7 +232,7 @@ function sendJson(res, status, payload) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, X-Secret-Key",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Cache-Control": "no-store"
   });
@@ -443,10 +444,18 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Headers": "Content-Type, X-Secret-Key",
       "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS"
     });
     return res.end();
+  }
+
+  // ===== Secret key auth =====
+  if (SECRET_KEY) {
+    const incoming = req.headers["x-secret-key"] || "";
+    if (incoming !== SECRET_KEY) {
+      return sendJson(res, 401, { error: "Unauthorized: invalid or missing X-Secret-Key" });
+    }
   }
 
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
