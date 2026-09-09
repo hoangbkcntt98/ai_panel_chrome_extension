@@ -4,7 +4,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import pg from "pg";
-import { prepareAnkiInput, buildAnkiPrompt, parseAnkiFields, getAnkiConfig, saveAnkiNote } from "./lib/anki.mjs";
+import { prepareAnkiInput, buildAnkiPrompt, parseAnkiFields, getAnkiConfig, findAnkiNote, saveAnkiNote } from "./lib/anki.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOG_FILE = join(__dirname, "server.log");
 
@@ -536,10 +536,20 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       return sendJson(res, 400, { error: error.message });
     }
-    if (!AI_API_KEY) return sendJson(res, 503, { error: "Configure AI_API_KEY in backend/.env." });
     try {
       // Check database configuration before spending an AI request.
       const config = getAnkiConfig(process.env, input.sectionTitle);
+      const sendNote = (note, duplicate) => sendJson(res, 200, {
+        saved: !duplicate,
+        duplicate,
+        noteId: note.anki_note_id,
+        word: note.source,
+        meaning: note.fields_json?.MeaningDestination || "",
+        destinationLanguage: note.fields_json?.destination_language || ""
+      });
+      const existing = await findAnkiNote(input.word, config);
+      if (existing) return sendNote(existing, true);
+      if (!AI_API_KEY) return sendJson(res, 503, { error: "Configure AI_API_KEY in backend/.env." });
       const model = resolveModel(body.model);
       const params = {
         model,
@@ -557,13 +567,7 @@ const server = http.createServer(async (req, res) => {
       }
       const fields = parseAnkiFields(result.text, input);
       const note = await saveAnkiNote(fields, config);
-      return sendJson(res, 200, {
-        saved: true,
-        noteId: note.anki_note_id,
-        word: note.source,
-        meaning: fields.MeaningDestination,
-        destinationLanguage: fields.destination_language
-      });
+      return sendNote(note, note.duplicate);
     } catch (error) {
       log(`POST /api/anki error: ${error.message}`);
       return sendJson(res, 500, { error: error.message || "Cannot add Anki note." });

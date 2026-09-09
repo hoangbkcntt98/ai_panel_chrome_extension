@@ -127,6 +127,25 @@ export function getAnkiConfig(env = process.env, sectionTitle = "") {
   };
 }
 
+async function selectAnkiNote(client, word, config) {
+  const result = await client.query(
+    `SELECT anki_note_id, source, fields_json FROM "${config.table}"
+     WHERE LOWER(BTRIM(source)) = LOWER(BTRIM($1))
+     ORDER BY anki_note_id LIMIT 1`,
+    [word.trim().toLowerCase()]
+  );
+  return result.rows[0] || null;
+}
+
+export async function findAnkiNote(word, config, Pool = pg.Pool) {
+  const pool = new Pool(config.connection);
+  try {
+    return await selectAnkiNote(pool, word, config);
+  } finally {
+    await pool.end();
+  }
+}
+
 export async function saveAnkiNote(fields, config, Pool = pg.Pool) {
   const normalizedFields = { ...fields, Word: fields.Word.trim().toLowerCase() };
   const note = {
@@ -135,8 +154,22 @@ export async function saveAnkiNote(fields, config, Pool = pg.Pool) {
     tags_json: config.tags, anki_modified_at: Math.floor(Date.now() / 1000), anki_usn: 0
   };
   const pool = new Pool(config.connection);
+  let client;
   try {
-    await pool.query(
+    client = await pool.connect();
+    await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+    // Same normalized word shares a transaction lock across backend instances.
+    // Check again after locking: another request may have saved it during AI generation.
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtext($1), hashtext(LOWER(BTRIM($2))))",
+      [config.table, note.source]
+    );
+    const existing = await selectAnkiNote(client, note.source, config);
+    if (existing) {
+      await client.query("COMMIT");
+      return { ...existing, duplicate: true };
+    }
+    await client.query(
       `INSERT INTO "${config.table}" (
         anki_note_id, anki_guid, note_type, source,
         fields_json, tags_json, anki_modified_at, anki_usn
@@ -144,8 +177,13 @@ export async function saveAnkiNote(fields, config, Pool = pg.Pool) {
       [note.anki_note_id, note.anki_guid, note.note_type, note.source,
         JSON.stringify(note.fields_json), JSON.stringify(note.tags_json), note.anki_modified_at, note.anki_usn]
     );
-    return note;
+    await client.query("COMMIT");
+    return { ...note, duplicate: false };
+  } catch (error) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
+    throw error;
   } finally {
+    client?.release();
     await pool.end();
   }
 }

@@ -667,7 +667,7 @@ async function addToAnki(text, context = "", button = el.addToAnkiButton, status
   const word = String(text || "").trim();
   const destinationLanguage = state.settings.outputLanguage || "";
   const sectionTitle = state.activeSection?.title || "";
-  const key = JSON.stringify([word, destinationLanguage, sectionTitle]);
+  const key = word.toLowerCase();
   const showStatus = (message, error = false) => {
     setStatus(message, error);
     if (statusElement) {
@@ -698,7 +698,11 @@ async function addToAnki(text, context = "", button = el.addToAnkiButton, status
       })
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.saved) throw new Error(data.error || `HTTP ${response.status}`);
+    if (!response.ok || (!data.saved && !data.duplicate)) throw new Error(data.error || `HTTP ${response.status}`);
+    if (data.duplicate) {
+      showStatus(`Word already in Anki database: "${data.word}"`);
+      return;
+    }
     showStatus(`Saved to Anki database: "${data.word}" · ${data.destinationLanguage} · ${data.meaning}`);
   } catch (error) {
     showStatus(`Add To Anki error: ${error.message}`, true);
